@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useAction, useConvex } from "convex/react";
+import {
+  useMutation,
+  useQuery,
+  useAction,
+  useQueries,
+  type RequestForQueries,
+} from "convex/react";
 import { ConvexError } from "convex/values";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -89,11 +95,39 @@ type AgentPlanningState =
   | { kind: "unavailable" };
 
 export function SetupScreen() {
-  const convex = useConvex();
   const { provisioned } = useConvexProvisioned();
   const tasksList = useQuery(api.tasks.list, provisioned ? {} : "skip");
   const availabilityList = useQuery(api.availability.list, provisioned ? {} : "skip");
   const canvasRow = useQuery(api.canvasIcs.getSettings, provisioned ? {} : "skip");
+
+  // `useQueries` passes this object to `useSubscription`; a new `{}` each render
+  // changes subscription identity and triggers setState during render → infinite loop.
+  const agentPlanningQueries = useMemo((): RequestForQueries =>
+    provisioned
+      ? {
+          agentPlanningConfig: {
+            query: api.plans.agentPlanningConfig,
+            args: {},
+          },
+        }
+      : {},
+    [provisioned],
+  );
+  const planningQuery = useQueries(agentPlanningQueries);
+  const planningResult = planningQuery.agentPlanningConfig;
+
+  const agentPlanning: AgentPlanningState = useMemo(() => {
+    if (!provisioned) return { kind: "idle" };
+    if (planningResult === undefined) return { kind: "loading" };
+    if (planningResult instanceof Error) {
+      console.warn("[SetupScreen] agentPlanningConfig failed:", planningResult);
+      return { kind: "unavailable" };
+    }
+    return {
+      kind: "ok",
+      agent_api_configured: planningResult.agent_api_configured,
+    };
+  }, [provisioned, planningResult]);
 
   const createTask = useMutation(api.tasks.create);
   const updateTask = useMutation(api.tasks.update);
@@ -122,34 +156,8 @@ export function SetupScreen() {
   const [canvasError, setCanvasError] = useState<string | null>(null);
   const [addTaskBusy, setAddTaskBusy] = useState(false);
   const [addTaskError, setAddTaskError] = useState<string | null>(null);
-  const [agentPlanning, setAgentPlanning] = useState<AgentPlanningState>({ kind: "idle" });
 
   const debouncers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-
-  useEffect(() => {
-    if (!provisioned || !convex) {
-      setAgentPlanning({ kind: "idle" });
-      return;
-    }
-    let cancelled = false;
-    setAgentPlanning({ kind: "loading" });
-    convex
-      .query(api.plans.agentPlanningConfig, {})
-      .then((r) => {
-        if (!cancelled) {
-          setAgentPlanning({ kind: "ok", agent_api_configured: r.agent_api_configured });
-        }
-      })
-      .catch((err) => {
-        console.warn("[SetupScreen] agentPlanningConfig failed:", err);
-        if (!cancelled) {
-          setAgentPlanning({ kind: "unavailable" });
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [provisioned, convex]);
 
   useEffect(() => {
     if (!tasksList) return;

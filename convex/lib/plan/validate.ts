@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { SCHEDULER_CONFIG } from '../config';
+
 export const PlanBlockSchema = z.object({
   mini_task_id: z.string(),
   parent_task_id: z.string(),
@@ -49,9 +51,13 @@ export function clampPlanDailyMinutes(
       return { ...block, minutes: adjustedMinutes };
     });
 
+    const nonNull = clampedBlocks.filter((b): b is NonNullable<typeof b> => b !== null);
+    // Drop sub-chunk leftovers that violate PlanBlockSchema (minutes 5–120).
+    const valid = nonNull.filter((b) => b.minutes >= SCHEDULER_CONFIG.chunkMin);
+
     clamped.days[date] = {
       ...day,
-      blocks: clampedBlocks.filter((b): b is NonNullable<typeof b> => b !== null),
+      blocks: valid,
     };
   }
 

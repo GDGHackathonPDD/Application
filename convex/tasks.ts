@@ -240,6 +240,16 @@ export const remove = mutation({
       if (doc.userId !== user._id) {
         throw new ConvexError({ message: "Task not found", code: "NOT_FOUND" });
       }
+      if (doc.parentTaskId === undefined) {
+        await ctx.runMutation(internal.plansInternal.deleteAllMiniTasksForParent, {
+          userId: user._id,
+          parentTaskId: args.taskId,
+        });
+        await ctx.runMutation(internal.plansInternal.stripPlanBlocksForParent, {
+          userId: user._id,
+          parentTaskId: args.taskId,
+        });
+      }
       await ctx.db.delete(args.taskId);
       return { success: true as const };
     }

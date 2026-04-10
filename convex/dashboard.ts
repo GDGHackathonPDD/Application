@@ -30,6 +30,7 @@ export const get = query({
     ]);
 
     const tasks = taskDocs.map(mapTask);
+    const taskIds = new Set(taskDocs.map((d) => d._id));
     const availability = availDocs.map(mapAvailability);
     const plan = latestPlan ? mapPlan(latestPlan) : null;
 
@@ -55,7 +56,9 @@ export const get = query({
         .query("miniTasks")
         .withIndex("by_user_scheduled", (q) => q.eq("userId", user._id))
         .take(5000);
-      miniTasks = miniDocs.map(mapMiniTask);
+      miniTasks = miniDocs
+        .filter((d) => taskIds.has(d.parentTaskId))
+        .map(mapMiniTask);
     }
 
     const incompleteBlocks = miniTasks.filter((m) => !m.completed).length;

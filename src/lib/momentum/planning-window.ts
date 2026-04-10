@@ -91,7 +91,16 @@ export function buildCalendarPlanForWindow(
   availability: WeeklyAvailability,
   tasks: OverallTask[]
 ): UserPlan {
-  const byDate = new Map(plan.days.map((d) => [d.date, { ...d }]))
+  /** Plan JSON can still list blocks after a parent task is deleted; only show blocks for current tasks. */
+  const validParentIds = new Set(tasks.map((t) => t.id))
+
+  const byDate = new Map(
+    plan.days.map((d) => {
+      const blocks = d.blocks.filter((b) => validParentIds.has(b.parentTaskId))
+      const scheduledMinutes = blocks.reduce((s, b) => s + b.minutes, 0)
+      return [d.date, { ...d, blocks, scheduledMinutes }] as const
+    })
+  )
   const dates = eachISODateInRange(periodStart, periodEnd)
 
   const duesByDate = new Map<string, Set<string>>()
@@ -106,7 +115,9 @@ export function buildCalendarPlanForWindow(
     const dueIds = [...(duesByDate.get(date) ?? [])]
 
     if (existing) {
-      const merged = new Set([...existing.overallDueTaskIds, ...dueIds])
+      const merged = new Set(
+        [...existing.overallDueTaskIds, ...dueIds].filter((id) => validParentIds.has(id))
+      )
       return {
         ...existing,
         overallDueTaskIds: [...merged],

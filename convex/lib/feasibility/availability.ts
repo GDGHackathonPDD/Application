@@ -4,7 +4,7 @@ import type {
   FeasibilityResult,
   FeasibilityStatus,
 } from "../types";
-import { FEASIBILITY_CONFIG } from "../config";
+import { FEASIBILITY_CONFIG, SCHEDULER_CONFIG } from "../config";
 
 function getRemainingHours(task: Task): number {
   const progress = Math.max(0, Math.min(100, task.progress_percent));
@@ -37,8 +37,16 @@ export function computeAvailableHours(
 export function computeEffectiveMinutesPerDay(
   availableHours: number
 ): number {
+  if (availableHours <= 0) {
+    return 0;
+  }
   const raw = availableHours * 60 * (1 - FEASIBILITY_CONFIG.bufferRatio);
-  return Math.max(0, raw - FEASIBILITY_CONFIG.minBufferMinutes);
+  const afterBuffer = Math.max(0, raw - FEASIBILITY_CONFIG.minBufferMinutes);
+  // Values like 0.25 h/day become 0 after the fixed buffer and leave the scheduler with no capacity.
+  if (afterBuffer === 0 && raw > 0) {
+    return Math.max(SCHEDULER_CONFIG.chunkMin, Math.round(raw));
+  }
+  return afterBuffer;
 }
 
 export function computeFeasibility(

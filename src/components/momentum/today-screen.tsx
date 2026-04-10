@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -19,12 +19,23 @@ export function TodayScreen({
   dateIso,
   tasks,
   initialTodayMinis,
+  onRegeneratePlan,
+  regenerateBusy = false,
+  regenerateError = null,
 }: {
   dateIso: string
   tasks: OverallTask[]
   initialTodayMinis: MiniTask[]
+  /** When set, “Regenerate plan” runs recovery-mode (segmented) scheduling via Convex + Agent API. */
+  onRegeneratePlan?: () => void | Promise<void>
+  regenerateBusy?: boolean
+  regenerateError?: string | null
 }) {
   const [minis, setMinis] = useState(initialTodayMinis)
+
+  useEffect(() => {
+    setMinis(initialTodayMinis)
+  }, [initialTodayMinis])
 
   const tasksById = new Map(tasks.map((t) => [t.id, t]))
 
@@ -74,10 +85,23 @@ export function TodayScreen({
         </CardContent>
       </Card>
 
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="secondary">
-          Regenerate plan
-        </Button>
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            data-testid="regenerate-plan"
+            disabled={regenerateBusy || !onRegeneratePlan}
+            onClick={() => void onRegeneratePlan?.()}
+          >
+            {regenerateBusy ? "Regenerating…" : "Regenerate plan (recovery steps)"}
+          </Button>
+        </div>
+        {regenerateError ? (
+          <p className="text-destructive text-sm" role="alert">
+            {regenerateError}
+          </p>
+        ) : null}
       </div>
     </div>
   )

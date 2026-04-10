@@ -30,6 +30,36 @@ type GenerationContext = {
   priorPlanCount: number;
   latestPlanCreatedAt: string | null;
 };
+
+function miniTasksInsertPayloadFromPlanDays(
+  days: Record<string, { blocks: PlanBlock[] }>
+): Array<{
+  parentTaskId: Id<"tasks">;
+  title: string;
+  scheduledDate: string;
+  minutes: number;
+  tier: PlanBlock["tier"];
+}> {
+  const out: Array<{
+    parentTaskId: Id<"tasks">;
+    title: string;
+    scheduledDate: string;
+    minutes: number;
+    tier: PlanBlock["tier"];
+  }> = [];
+  for (const [date, day] of Object.entries(days)) {
+    for (const block of day.blocks) {
+      out.push({
+        parentTaskId: block.parent_task_id as Id<"tasks">,
+        title: block.title,
+        scheduledDate: date,
+        minutes: block.minutes,
+        tier: block.tier,
+      });
+    }
+  }
+  return out;
+}
 const periodMode = v.union(
   v.literal("rolling"),
   v.literal("calendar_month"),
@@ -178,6 +208,7 @@ export const generate = action({
 
     const planId: Id<"plans"> = await ctx.runMutation(internal.plansInternal.insertPlan, {
       userId: base.userId,
+      replaceAllMiniTasks: true,
       planJson: planJsonString,
       overloadScore: feasibilityPayload.overload.score,
       periodStart: period.period_start,
@@ -280,6 +311,51 @@ export const mergeNewTaskPlan = internalAction({
 
     const { newMiniTasksPayload, updateSummary: _omitUpdateSummary, ...planForStorage } = result;
     void _omitUpdateSummary;
+
+    const overallWithRemaining = mergeCtx.tasks.filter(
+      (t) =>
+        !t.parent_task_id &&
+        t.estimated_hours * (1 - t.progress_percent / 100) > 0
+    );
+
+    if (newMiniTasksPayload.length === 0 && overallWithRemaining.length > 0) {
+      console.warn(
+        "mergeNewTaskPlan: incremental schedule produced no new blocks; running full replan"
+      );
+      try {
+        const full = await generatePlan(
+          mergeCtx.tasks,
+          mergeCtx.availability,
+          feasibilityPayload.feasibility,
+          period.period_start,
+          period.period_end,
+          false,
+          null,
+          "tasks_changed"
+        );
+        const { updateSummary: _omitFull, ...fullStorage } = full;
+        void _omitFull;
+        const planJsonString = JSON.stringify(fullStorage);
+        await ctx.runMutation(internal.plansInternal.insertPlan, {
+          userId: mergeCtx.userId,
+          replaceAllMiniTasks: true,
+          planJson: planJsonString,
+          overloadScore: feasibilityPayload.overload.score,
+          periodStart: period.period_start,
+          periodEnd: period.period_end,
+          horizonDays: period.horizon_days,
+          updateReason: "tasks_changed",
+          updateSummary: full.updateSummary ?? undefined,
+          recoveryMode: fullStorage.meta.recovery_mode,
+          schedulerVersion: "deterministic-v1",
+          miniTasks: miniTasksInsertPayloadFromPlanDays(full.days),
+        });
+        return;
+      } catch (fallbackErr) {
+        console.error("mergeNewTaskPlan: full replan fallback failed:", fallbackErr);
+      }
+    }
+
     const planJsonString = JSON.stringify(planForStorage);
 
     await ctx.runMutation(internal.plansInternal.insertPlan, {
