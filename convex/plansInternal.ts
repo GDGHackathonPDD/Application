@@ -9,7 +9,8 @@ const planUpdateReason = v.union(
   v.literal("initial"),
   v.literal("manual_regenerate"),
   v.literal("auto_drift"),
-  v.literal("tasks_changed")
+  v.literal("tasks_changed"),
+  v.literal("availability_changed")
 );
 
 const tier = v.union(v.literal("must"), v.literal("should"), v.literal("optional"));
@@ -123,6 +124,59 @@ export const getGenerationContext = internalQuery({
 
     return {
       userId: user._id,
+      userDefaults: {
+        default_planning_horizon_days: user.defaultPlanningHorizonDays,
+        default_period_mode: user.defaultPeriodMode,
+        max_auto_horizon_days: user.maxAutoHorizonDays ?? null,
+      },
+      tasks,
+      availability,
+      miniTasks,
+      priorPlanCount,
+      latestPlanCreatedAt: anyPlan ? new Date(anyPlan.createdAt).toISOString() : null,
+    };
+  },
+});
+
+/** Same as `getGenerationContext` but for a given user (e.g. scheduled actions without auth). */
+export const getGenerationContextForUser = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) {
+      return null;
+    }
+
+    const [taskDocs, availDocs, anyPlan, miniDocs] = await Promise.all([
+      ctx.db
+        .query("tasks")
+        .withIndex("by_user_due", (q) => q.eq("userId", args.userId))
+        .order("asc")
+        .take(5000),
+      ctx.db
+        .query("availability")
+        .withIndex("by_user_day", (q) => q.eq("userId", args.userId))
+        .order("asc")
+        .take(32),
+      ctx.db
+        .query("plans")
+        .withIndex("by_user_created", (q) => q.eq("userId", args.userId))
+        .order("desc")
+        .first(),
+      ctx.db
+        .query("miniTasks")
+        .withIndex("by_user_scheduled", (q) => q.eq("userId", args.userId))
+        .take(5000),
+    ]);
+
+    const tasks: Task[] = taskDocs.map(mapTask);
+    const availability = availDocs.map(mapAvailability);
+    const miniTasks: MiniTask[] = miniDocs.map(mapMiniTask);
+
+    const priorPlanCount = anyPlan ? 1 : 0;
+
+    return {
+      userId: args.userId,
       userDefaults: {
         default_planning_horizon_days: user.defaultPlanningHorizonDays,
         default_period_mode: user.defaultPeriodMode,

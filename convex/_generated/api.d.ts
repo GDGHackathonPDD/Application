@@ -16,6 +16,7 @@ import type * as dailySummary from "../dailySummary.js";
 import type * as dashboard from "../dashboard.js";
 import type * as feasibility from "../feasibility.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_calendar_dates from "../lib/calendar_dates.js";
 import type * as lib_canvas_ics from "../lib/canvas/ics.js";
 import type * as lib_config from "../lib/config.js";
 import type * as lib_drift_index from "../lib/drift/index.js";
@@ -53,6 +54,7 @@ declare const fullApi: ApiFromModules<{
   dashboard: typeof dashboard;
   feasibility: typeof feasibility;
   "lib/auth": typeof lib_auth;
+  "lib/calendar_dates": typeof lib_calendar_dates;
   "lib/canvas/ics": typeof lib_canvas_ics;
   "lib/config": typeof lib_config;
   "lib/drift/index": typeof lib_drift_index;

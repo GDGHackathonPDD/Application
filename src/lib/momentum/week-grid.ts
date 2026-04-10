@@ -25,6 +25,20 @@ function startOfWeekSunday(d: Date): Date {
   return x
 }
 
+/**
+ * Inclusive Sun–Sat range for the calendar week containing `anchor`, shifted by
+ * `weekOffset` × 7 days (0 = week of `anchor`, −1 = previous week, etc.).
+ */
+export function getVisibleWeekRange(
+  anchor: Date,
+  weekOffset: number
+): { periodStart: string; periodEnd: string } {
+  const week0 = startOfWeekSunday(anchor)
+  const start = addDays(week0, weekOffset * 7)
+  const end = addDays(start, 6)
+  return { periodStart: toISODate(start), periodEnd: toISODate(end) }
+}
+
 export type WeekCell =
   | { kind: "out"; date: string }
   | { kind: "in"; day: PlanDay }

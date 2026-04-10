@@ -1,4 +1,4 @@
-import { action, internalAction, query } from "./_generated/server";
+import { action, internalAction, query, type ActionCtx } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -65,6 +65,101 @@ const periodMode = v.union(
   v.literal("calendar_month"),
   v.literal("date_range")
 );
+
+/** Full replan for a user: new plan JSON + mini tasks from scheduler (replaces all minis). */
+async function regenerateFullPlanForUser(
+  ctx: ActionCtx,
+  args: { userId: Id<"users">; updateReason: PlanUpdateReason }
+): Promise<void> {
+  const base = await ctx.runQuery(internal.plansInternal.getGenerationContextForUser, {
+    userId: args.userId,
+  });
+  if (!base) {
+    return;
+  }
+
+  const period = resolvePlanningPeriod({
+    userDefaults: base.userDefaults,
+    horizonFromDefaultsOnly: true,
+  });
+
+  const feasibilityPayload = computeFeasibilityPayload(
+    base.tasks,
+    base.availability,
+    period.period_start,
+    period.period_end
+  );
+
+  const overallTasks = base.tasks.filter((t) => !t.parent_task_id);
+  const tasksWithRemaining = overallTasks.filter(
+    (t) => t.estimated_hours * (1 - t.progress_percent / 100) > 0
+  );
+
+  if (tasksWithRemaining.length === 0) {
+    return;
+  }
+
+  const incompleteBlocks = base.miniTasks.filter((m) => !m.completed).length;
+  const stalledTasks = overallTasks.filter(
+    (t) => t.progress_percent === 0 && new Date(t.due_date) < new Date()
+  );
+  const overdueNow = overallTasks.filter(
+    (t) => new Date(t.due_date) < new Date() && t.estimated_hours * (1 - t.progress_percent / 100) > 0
+  ).length;
+
+  const driftResult = computeDrift({
+    overload: feasibilityPayload.overload,
+    feasibility: feasibilityPayload.feasibility,
+    incompleteBlockCount: incompleteBlocks,
+    stalledTaskIds: stalledTasks.map((t) => t.id),
+    overdueDelta: overdueNow,
+    planCreatedAt: base.latestPlanCreatedAt,
+    now: new Date(),
+    remainingHoursDelta: feasibilityPayload.feasibility.shortfall_claimed_hours,
+    mustDoStreakMiss: 0,
+  });
+
+  const isRecovery = driftResult.falling_behind;
+
+  let result: Awaited<ReturnType<typeof generatePlan>>;
+  try {
+    result = await generatePlan(
+      base.tasks,
+      base.availability,
+      feasibilityPayload.feasibility,
+      period.period_start,
+      period.period_end,
+      isRecovery,
+      driftResult,
+      args.updateReason
+    );
+  } catch (err) {
+    if (err instanceof ApiError && err.code === "NO_REMAINING_WORK") {
+      return;
+    }
+    console.error(`regenerateFullPlanForUser (${args.updateReason}) failed:`, err);
+    return;
+  }
+
+  const { updateSummary: _omit, ...planForStorage } = result;
+  void _omit;
+  const planJsonString = JSON.stringify(planForStorage);
+
+  await ctx.runMutation(internal.plansInternal.insertPlan, {
+    userId: args.userId,
+    replaceAllMiniTasks: true,
+    planJson: planJsonString,
+    overloadScore: feasibilityPayload.overload.score,
+    periodStart: period.period_start,
+    periodEnd: period.period_end,
+    horizonDays: period.horizon_days,
+    updateReason: args.updateReason,
+    updateSummary: result.updateSummary ?? undefined,
+    recoveryMode: planForStorage.meta.recovery_mode,
+    schedulerVersion: "deterministic-v1",
+    miniTasks: miniTasksInsertPayloadFromPlanDays(result.days),
+  });
+}
 
 /**
  * Whether Convex can call the Agent API for LLM decomposition (Mode B).
@@ -216,7 +311,7 @@ export const generate = action({
       horizonDays: period.horizon_days,
       updateReason,
       updateSummary: result.updateSummary ?? undefined,
-      recoveryMode: isRecovery,
+      recoveryMode: planForStorage.meta.recovery_mode,
       schedulerVersion: "deterministic-v1",
       miniTasks: miniTasksPayload,
     });
@@ -376,6 +471,34 @@ export const mergeNewTaskPlan = internalAction({
         minutes: mt.minutes,
         tier: mt.tier,
       })),
+    });
+  },
+});
+
+/**
+ * Re-runs the deterministic scheduler with current tasks + updated weekly availability
+ * so daily blocks stay within effective per-day capacity (same path as manual Generate plan).
+ */
+export const regenerateAfterAvailabilityChange = internalAction({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    await regenerateFullPlanForUser(ctx, {
+      userId: args.userId,
+      updateReason: "availability_changed",
+    });
+  },
+});
+
+/**
+ * After an overall task is removed, re-run the scheduler so remaining work is redistributed
+ * (not only stripping that parent's blocks from the stored plan).
+ */
+export const regenerateAfterTaskDelete = internalAction({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    await regenerateFullPlanForUser(ctx, {
+      userId: args.userId,
+      updateReason: "tasks_changed",
     });
   },
 });

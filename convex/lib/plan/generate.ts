@@ -21,6 +21,7 @@ import {
 } from './validate';
 import { deterministicSchedulerModeA, deterministicSchedulerModeB, type SchedulerInput } from './scheduler';
 import { resolvePlanningPeriod } from './period';
+import { eachYmdInRange, parseYmd } from '../calendar_dates';
 import { ApiError } from '../errors';
 
 /** Base URL of repo-root `agent-api/` FastAPI service (local or Cloud Run). */
@@ -70,16 +71,12 @@ function buildEffectiveMinutesMap(
   periodEnd: string
 ): Record<string, number> {
   const result: Record<string, number> = {};
-  const start = new Date(periodStart);
-  const end = new Date(periodEnd);
-
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const dateStr = d.toISOString().slice(0, 10);
+  for (const dateStr of eachYmdInRange(periodStart, periodEnd)) {
+    const d = parseYmd(dateStr);
     const dow = d.getDay();
     const row = availability.find((a) => a.day_of_week === dow);
     result[dateStr] = computeEffectiveMinutesPerDay(row?.available_hours ?? 0);
   }
-
   return result;
 }
 
@@ -207,15 +204,14 @@ export async function generatePlan(
   let planJson: ValidatedPlanJson;
   let decompositionSteps: Map<string, DecompositionStep[]> = new Map();
 
-  if (recoveryMode) {
-    try {
-      decompositionSteps = await fetchDecomposition(tasks, feasibility);
-    } catch {
-      decompositionSteps = new Map();
-    }
+  /** Segmentation agent (`/decompose`) — always attempted; placer picks Mode B vs A from the result. */
+  try {
+    decompositionSteps = await fetchDecomposition(tasks, feasibility);
+  } catch {
+    decompositionSteps = new Map();
   }
 
-  if (recoveryMode && decompositionSteps.size > 0) {
+  if (decompositionSteps.size > 0) {
     planJson = deterministicSchedulerModeB({
       tasks,
       availability,
@@ -242,7 +238,7 @@ export async function generatePlan(
 
   const copy = await fetchCopy(planJson, feasibility, driftResult, updateReason);
   planJson.explanation = copy.explanation;
-  planJson.meta.recovery_mode = recoveryMode;
+  planJson.meta.recovery_mode = recoveryMode || decompositionSteps.size > 0;
 
   return { ...planJson, explanation: copy.explanation, updateSummary: copy.updateSummary };
 }

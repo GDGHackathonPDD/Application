@@ -4,7 +4,12 @@ export type Tier = 'must' | 'should' | 'optional';
 export type FeasibilityStatus = 'FEASIBLE' | 'FEASIBLE_FRAGILE' | 'INFEASIBLE';
 export type OverloadLabel = 'stable' | 'drifting' | 'overloaded';
 export type PeriodMode = 'rolling' | 'calendar_month' | 'date_range';
-export type PlanUpdateReason = 'initial' | 'manual_regenerate' | 'auto_drift' | 'tasks_changed';
+export type PlanUpdateReason =
+  | 'initial'
+  | 'manual_regenerate'
+  | 'auto_drift'
+  | 'tasks_changed'
+  | 'availability_changed';
 
 export interface User {
   id: string;

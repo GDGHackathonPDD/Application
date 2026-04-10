@@ -18,11 +18,14 @@ export const OVERLOAD_BANDS = {
 export type OverloadLabel = keyof typeof OVERLOAD_BANDS;
 
 export const SCHEDULER_CONFIG = {
-  chunkTarget: 25,
+  /** Preferred block length when slicing work (Mode A fallback, recovery target). */
+  chunkTarget: 60,
   chunkMin: 15,
-  chunkMax: 40,
-  chunkTargetRecovery: 20,
-  schedulerVersion: 'deterministic-v1',
+  /** Upper bound per calendar block; must stay within PlanBlockSchema (≤120). */
+  chunkMax: 90,
+  chunkTargetRecovery: 60,
+  /** Sequential tasks; spread across days (least load); one calendar day per task when it fits; no arbitrary fine splits. */
+  schedulerVersion: 'deterministic-v5-spread-whole-day',
 } as const;
 
 export const DRIFT_CONFIG = {

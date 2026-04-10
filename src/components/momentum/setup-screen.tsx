@@ -88,6 +88,27 @@ function patchToConvex(patch: Partial<OverallTask>) {
   return p;
 }
 
+function patchMatchesServer(server: OverallTask, patch: Partial<OverallTask>): boolean {
+  const keys = Object.keys(patch) as (keyof OverallTask)[];
+  if (keys.length === 0) return true;
+  return keys.every((k) => server[k] === patch[k]);
+}
+
+const WEEKLY_KEYS: (keyof WeeklyAvailability)[] = [
+  "sun",
+  "mon",
+  "tue",
+  "wed",
+  "thu",
+  "fri",
+  "sat",
+];
+
+/** Compare hours with tolerance for float noise from the server. */
+function weeklyAvailabilityEquals(a: WeeklyAvailability, b: WeeklyAvailability): boolean {
+  return WEEKLY_KEYS.every((k) => Math.round(a[k] * 1000) === Math.round(b[k] * 1000));
+}
+
 type AgentPlanningState =
   | { kind: "idle" }
   | { kind: "loading" }
@@ -138,43 +159,100 @@ export function SetupScreen() {
   const clearUploadedIcsMutation = useMutation(api.canvasIcs.clearUploadedIcs);
   const syncCanvas = useAction(api.canvasIcs.sync);
 
-  const [tasks, setTasks] = useState<OverallTask[]>([]);
-  const [availability, setAvailability] = useState<WeeklyAvailability>({
-    sun: 0,
-    mon: 0,
-    tue: 0,
-    wed: 0,
-    thu: 0,
-    fri: 0,
-    sat: 0,
-  });
-  const [canvas, setCanvas] = useState(() =>
-    canvasSettingsToUi(null)
-  );
+  const [pendingDeletes, setPendingDeletes] = useState<Set<string>>(() => new Set());
+  const [pendingEdits, setPendingEdits] = useState<Record<string, Partial<OverallTask>>>({});
+  const [canvas, setCanvas] = useState(() => canvasSettingsToUi(null));
+  /** When true, do not overwrite `canvas` from Convex while the user edits the feed URL. */
+  const [canvasFeedDirty, setCanvasFeedDirty] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [canvasError, setCanvasError] = useState<string | null>(null);
   const [addTaskBusy, setAddTaskBusy] = useState(false);
   const [addTaskError, setAddTaskError] = useState<string | null>(null);
+  const [removeTaskError, setRemoveTaskError] = useState<string | null>(null);
 
   const debouncers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
+  const serverTasks = useMemo((): OverallTask[] => {
+    if (!tasksList) return [];
+    return tasksList.filter((t) => !t.parent_task_id).map(taskToOverallTask);
+  }, [tasksList]);
+
+  const tasks = useMemo(() => {
+    return serverTasks
+      .filter((t) => !pendingDeletes.has(t.id))
+      .map((t) => {
+        const patch = pendingEdits[t.id];
+        return patch ? { ...t, ...patch } : t;
+      });
+  }, [serverTasks, pendingDeletes, pendingEdits]);
+
+  const serverWeekly = useMemo(
+    () => availabilityRowsToWeekly(availabilityList ?? []),
+    [availabilityList]
+  );
+
+  /** Immediate UI while Convex catches up; cleared when subscription matches. */
+  const [pendingWeekly, setPendingWeekly] = useState<WeeklyAvailability | null>(null);
+
+  const availabilitySyncDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestAvailabilityForSyncRef = useRef<WeeklyAvailability | null>(null);
+
+  const availability = pendingWeekly ?? serverWeekly;
+
+  useEffect(() => {
+    if (pendingWeekly === null) return;
+    if (weeklyAvailabilityEquals(pendingWeekly, serverWeekly)) {
+      setPendingWeekly(null);
+    }
+  }, [pendingWeekly, serverWeekly]);
+
+  useEffect(() => {
+    const serverIds = new Set(serverTasks.map((t) => t.id));
+    setPendingEdits((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const id of Object.keys(next)) {
+        if (!serverIds.has(id)) {
+          delete next[id];
+          changed = true;
+          continue;
+        }
+        const server = serverTasks.find((t) => t.id === id);
+        if (!server) continue;
+        const patch = next[id];
+        if (patch && patchMatchesServer(server, patch)) {
+          delete next[id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [serverTasks]);
+
   useEffect(() => {
     if (!tasksList) return;
-    setTasks(
-      tasksList.filter((t) => !t.parent_task_id).map(taskToOverallTask)
+    const ids = new Set(
+      tasksList.filter((t) => !t.parent_task_id).map((t) => t.id)
     );
+    setPendingDeletes((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const id of prev) {
+        if (!ids.has(id)) {
+          next.delete(id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
   }, [tasksList]);
 
   useEffect(() => {
-    if (!availabilityList || availabilityList.length === 0) return;
-    setAvailability(availabilityRowsToWeekly(availabilityList));
-  }, [availabilityList]);
-
-  useEffect(() => {
     if (canvasRow === undefined) return;
+    if (canvasFeedDirty) return;
     setCanvas(canvasSettingsToUi(canvasRow));
-  }, [canvasRow]);
+  }, [canvasRow, canvasFeedDirty]);
 
   const schedulePersist = useCallback(
     (taskId: string, patch: Partial<OverallTask>) => {
@@ -195,9 +273,10 @@ export function SetupScreen() {
 
   const handleTaskChange = useCallback(
     (id: string, patch: Partial<OverallTask>) => {
-      setTasks((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, ...patch } : t))
-      );
+      setPendingEdits((prev) => ({
+        ...prev,
+        [id]: { ...(prev[id] ?? {}), ...patch },
+      }));
       schedulePersist(id, patch);
     },
     [schedulePersist]
@@ -205,11 +284,26 @@ export function SetupScreen() {
 
   const handleRemove = useCallback(
     async (id: string) => {
+      setRemoveTaskError(null);
       const pending = debouncers.current.get(id);
       if (pending) clearTimeout(pending);
       debouncers.current.delete(id);
-      setTasks((prev) => prev.filter((t) => t.id !== id));
-      await removeTask({ taskId: id as Id<"tasks"> });
+      setPendingDeletes((prev) => new Set(prev).add(id));
+      setPendingEdits((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      try {
+        await removeTask({ taskId: id as Id<"tasks"> });
+      } catch (e) {
+        setRemoveTaskError(readConvexErrorMessage(e));
+        setPendingDeletes((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }
     },
     [removeTask]
   );
@@ -242,8 +336,18 @@ export function SetupScreen() {
 
   const handleAvailability = useCallback(
     (next: WeeklyAvailability) => {
-      setAvailability(next);
-      void upsertAvailability({ days: weeklyAvailabilityToDayEntries(next) });
+      setPendingWeekly(next);
+      latestAvailabilityForSyncRef.current = next;
+      if (availabilitySyncDebounceRef.current) {
+        clearTimeout(availabilitySyncDebounceRef.current);
+      }
+      availabilitySyncDebounceRef.current = setTimeout(() => {
+        availabilitySyncDebounceRef.current = null;
+        const payload = latestAvailabilityForSyncRef.current;
+        if (payload) {
+          void upsertAvailability({ days: weeklyAvailabilityToDayEntries(payload) });
+        }
+      }, 400);
     },
     [upsertAvailability]
   );
@@ -253,6 +357,7 @@ export function SetupScreen() {
     setCanvas((c) => ({ ...c, status: "syncing" }));
     try {
       await saveCanvasUrl({ feed_url: canvas.feedUrl });
+      setCanvasFeedDirty(false);
       setCanvas((c) => ({ ...c, status: "ok" }));
     } catch (e) {
       setCanvasError(readConvexErrorMessage(e));
@@ -282,6 +387,7 @@ export function SetupScreen() {
   const handleUploadIcs = useCallback(
     async (icsText: string, fileName: string) => {
       setCanvasError(null);
+      setCanvasFeedDirty(false);
       setCanvas((c) => ({ ...c, status: "syncing" }));
       try {
         await saveUploadedIcsMutation({ ics_text: icsText, file_name: fileName });
@@ -303,6 +409,7 @@ export function SetupScreen() {
     setCanvasError(null);
     try {
       await clearUploadedIcsMutation({});
+      setCanvasFeedDirty(false);
       setCanvas((c) => ({
         ...c,
         hasUploadedIcs: false,
@@ -425,6 +532,11 @@ export function SetupScreen() {
                 {addTaskError}
               </p>
             ) : null}
+            {removeTaskError ? (
+              <p className="text-destructive text-sm" role="alert">
+                {removeTaskError}
+              </p>
+            ) : null}
           </div>
 
           <Separator />
@@ -444,6 +556,7 @@ export function SetupScreen() {
             state={{ ...canvas, status: syncing ? "syncing" : canvas.status }}
             onFeedUrlChange={(feedUrl) => {
               setCanvasError(null);
+              setCanvasFeedDirty(true);
               setCanvas((c) => ({ ...c, feedUrl }));
             }}
             onSave={handleSaveCanvas}

@@ -13,7 +13,8 @@ const planUpdateReason = v.union(
   v.literal("initial"),
   v.literal("manual_regenerate"),
   v.literal("auto_drift"),
-  v.literal("tasks_changed")
+  v.literal("tasks_changed"),
+  v.literal("availability_changed")
 );
 
 export default defineSchema({

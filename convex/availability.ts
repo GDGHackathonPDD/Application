@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
+import { internal } from "./_generated/api";
 import { getAuthUser } from "./lib/auth";
 import { mapAvailability } from "./lib/mappers";
 
@@ -58,6 +59,11 @@ export const upsert = mutation({
       }
     }
     out.sort((a, b) => a.day_of_week - b.day_of_week);
+
+    await ctx.scheduler.runAfter(0, internal.plans.regenerateAfterAvailabilityChange, {
+      userId: user._id,
+    });
+
     return out;
   },
 });

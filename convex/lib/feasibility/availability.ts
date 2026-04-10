@@ -5,6 +5,7 @@ import type {
   FeasibilityStatus,
 } from "../types";
 import { FEASIBILITY_CONFIG, SCHEDULER_CONFIG } from "../config";
+import { eachYmdInRange, parseYmd } from "../calendar_dates";
 
 function getRemainingHours(task: Task): number {
   const progress = Math.max(0, Math.min(100, task.progress_percent));
@@ -19,10 +20,8 @@ export function computeAvailableHours(
   let claimed = 0;
   let capped = 0;
 
-  const start = new Date(periodStart);
-  const end = new Date(periodEnd);
-
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+  for (const dateStr of eachYmdInRange(periodStart, periodEnd)) {
+    const d = parseYmd(dateStr);
     const dow = d.getDay();
     const row = availability.find((a) => a.day_of_week === dow);
     const hours = row?.available_hours ?? 0;

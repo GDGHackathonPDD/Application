@@ -251,6 +251,11 @@ export const remove = mutation({
         });
       }
       await ctx.db.delete(args.taskId);
+      if (doc.parentTaskId === undefined) {
+        await ctx.scheduler.runAfter(0, internal.plans.regenerateAfterTaskDelete, {
+          userId: user._id,
+        });
+      }
       return { success: true as const };
     }
     const miniTaskId = args.miniTaskId!;

@@ -8,6 +8,7 @@ import type {
 import { FEASIBILITY_CONFIG } from "../config";
 import { computeOverload } from "./overload";
 import { computeFeasibility } from "./availability";
+import { eachYmdInRange, parseYmd } from "../calendar_dates";
 
 function buildExpandSuggestions(
   shortfallHours: number,
@@ -21,11 +22,8 @@ function buildExpandSuggestions(
   const maxDaily = FEASIBILITY_CONFIG.maxDailySuggestionHours;
 
   const dayEntries: { date: string; available: number }[] = [];
-  const start = new Date(periodStart);
-  const end = new Date(periodEnd);
-
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const dateStr = d.toISOString().slice(0, 10);
+  for (const dateStr of eachYmdInRange(periodStart, periodEnd)) {
+    const d = parseYmd(dateStr);
     const dow = d.getDay();
     const row = availability.find((a) => a.day_of_week === dow);
     dayEntries.push({

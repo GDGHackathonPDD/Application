@@ -11,6 +11,7 @@ export type PlanUpdateReason =
   | "manual_regenerate"
   | "auto_drift"
   | "tasks_changed"
+  | "availability_changed"
 
 export type PlanningPeriodPreset = "7" | "month" | "custom"
 
@@ -33,6 +34,8 @@ export interface MiniTask {
   minutes: number
   tier: MiniTaskTier
   completed: boolean
+  /** ISO timestamp when marked complete; from Convex `completedAt` */
+  completedAt?: string | null
 }
 
 export interface PlanBlockPayload {

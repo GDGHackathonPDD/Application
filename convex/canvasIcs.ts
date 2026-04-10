@@ -1,6 +1,6 @@
 import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getAuthUser } from "./lib/auth";
 import { mapCanvasIcsSettings } from "./lib/mappers";
@@ -290,6 +290,19 @@ export const sync = action({
       taskSource,
       events: payload,
     });
+
+    /**
+     * ICS sync writes tasks directly (not via `tasks.create`), so `mergeNewTaskPlan` never ran.
+     * Run the same full replan as "Generate plan" so mini-tasks exist for the schedule UI.
+     */
+    if (payload.length > 0) {
+      try {
+        await ctx.runAction(api.plans.generate, {});
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("[canvasIcs.sync] plans.generate after calendar sync failed:", msg);
+      }
+    }
 
     return {
       success: true as const,

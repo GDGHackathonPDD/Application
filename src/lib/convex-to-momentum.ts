@@ -17,6 +17,7 @@ import type {
   UserPlan,
   WeeklyAvailability,
 } from "@/lib/types/momentum";
+import { localDateIso } from "@/lib/local-date";
 
 export function taskToOverallTask(t: Task): OverallTask {
   const src = t.source;
@@ -48,6 +49,7 @@ export function convexMiniToUi(m: ConvexMiniTask): MiniTask {
     minutes: m.minutes,
     tier: m.tier,
     completed: m.completed,
+    completedAt: m.completed_at ?? null,
   };
 }
 
@@ -118,7 +120,9 @@ export function convexPlanToUserPlan(
       tier: b.tier,
     }));
     const scheduledMinutes = blocks.reduce((s, b) => s + b.minutes, 0);
-    const overallDueTaskIds = [...new Set(blocks.map((b) => b.parentTaskId))];
+    // Due-date markers are merged in the client via `buildCalendarPlanForWindow`
+    // from `OverallTask.dueDate`. Do not list block parents here — that duplicates Planned.
+    const overallDueTaskIds: string[] = [];
     return {
       date,
       availableHours: d?.available_hours ?? 0,
@@ -248,13 +252,16 @@ export function mapDashboardToMomentum(result: DashboardGetResult): {
     arr.sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
   }
   const weeklyAvailability = availabilityRowsToWeekly(data.availability);
+  /** Calendar anchor is “today” so the strip stays centered on the current week and includes upcoming due dates. */
+  const anchorDate = new Date(`${localDateIso()}T12:00:00`);
+
   return {
     tasks: overall,
     plan,
     feasibility,
     minisByParent,
     weeklyAvailability,
-    anchorDate: new Date(),
+    anchorDate,
   };
 }
 
