@@ -1,0 +1,209 @@
+import { action } from "./_generated/server";
+import { ConvexError, v } from "convex/values";
+import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
+import { ApiError } from "./lib/errors";
+import { computeDrift } from "./lib/drift";
+import { computeFeasibilityPayload } from "./lib/feasibility";
+import { generatePlan } from "./lib/plan/generate";
+import { resolvePlanningPeriod } from "./lib/plan/period";
+import type {
+  AvailabilityRow,
+  MiniTask,
+  Plan,
+  PlanBlock,
+  PeriodMode,
+  PlanUpdateReason,
+  Task,
+} from "./lib/types";
+
+type GenerationContext = {
+  userId: Id<"users">;
+  userDefaults: {
+    default_planning_horizon_days: number;
+    default_period_mode: PeriodMode;
+    max_auto_horizon_days: number | null;
+  };
+  tasks: Task[];
+  availability: AvailabilityRow[];
+  miniTasks: MiniTask[];
+  priorPlanCount: number;
+  latestPlanCreatedAt: string | null;
+};
+const periodMode = v.union(
+  v.literal("rolling"),
+  v.literal("calendar_month"),
+  v.literal("date_range")
+);
+
+export const generate = action({
+  args: {
+    planning_horizon_days: v.optional(v.number()),
+    period_mode: v.optional(periodMode),
+    period_start: v.optional(v.string()),
+    period_end: v.optional(v.string()),
+    recovery_mode: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args): Promise<{
+    success: true;
+    data: {
+      plan_json: Plan["plan_json"];
+      overload_score: number;
+      feasibility: unknown;
+      overload: unknown;
+      recommendations: unknown[];
+      messages: string[];
+      updatedAt: string;
+      updateReason: Plan["update_reason"];
+      updateSummary: Plan["update_summary"];
+      period_start: string;
+      period_end: string;
+      horizon_days: number;
+      plan: Plan;
+      drift: unknown;
+      period: unknown;
+    };
+  }> => {
+    const base: GenerationContext = await ctx.runQuery(internal.plansInternal.getGenerationContext, {});
+
+    const period = resolvePlanningPeriod({
+      planning_horizon_days: args.planning_horizon_days,
+      period_mode: args.period_mode,
+      period_start: args.period_start,
+      period_end: args.period_end,
+      userDefaults: base.userDefaults,
+      horizonFromDefaultsOnly: args.planning_horizon_days === undefined,
+    });
+
+    const feasibilityPayload = computeFeasibilityPayload(
+      base.tasks,
+      base.availability,
+      period.period_start,
+      period.period_end
+    );
+
+    const overallTasks = base.tasks.filter((t) => !t.parent_task_id);
+    const tasksWithRemaining = overallTasks.filter(
+      (t) => t.estimated_hours * (1 - t.progress_percent / 100) > 0
+    );
+
+    if (tasksWithRemaining.length === 0) {
+      throw new ConvexError({
+        message: "No tasks with remaining work to plan",
+        code: "NO_REMAINING_WORK",
+      });
+    }
+
+    const incompleteBlocks = base.miniTasks.filter((m) => !m.completed).length;
+    const stalledTasks = overallTasks.filter(
+      (t) => t.progress_percent === 0 && new Date(t.due_date) < new Date()
+    );
+    const overdueNow = overallTasks.filter(
+      (t) => new Date(t.due_date) < new Date() && t.estimated_hours * (1 - t.progress_percent / 100) > 0
+    ).length;
+
+    const driftResult = computeDrift({
+      overload: feasibilityPayload.overload,
+      feasibility: feasibilityPayload.feasibility,
+      incompleteBlockCount: incompleteBlocks,
+      stalledTaskIds: stalledTasks.map((t) => t.id),
+      overdueDelta: overdueNow,
+      planCreatedAt: base.latestPlanCreatedAt,
+      now: new Date(),
+      remainingHoursDelta: feasibilityPayload.feasibility.shortfall_claimed_hours,
+      mustDoStreakMiss: 0,
+    });
+
+    const isRecovery = args.recovery_mode ?? driftResult.falling_behind;
+    const updateReason: PlanUpdateReason = driftResult.falling_behind
+      ? "auto_drift"
+      : base.priorPlanCount === 0
+        ? "initial"
+        : "manual_regenerate";
+
+    let result: Awaited<ReturnType<typeof generatePlan>>;
+    try {
+      result = await generatePlan(
+        base.tasks,
+        base.availability,
+        feasibilityPayload.feasibility,
+        period.period_start,
+        period.period_end,
+        isRecovery,
+        driftResult,
+        updateReason
+      );
+    } catch (err) {
+      if (err instanceof ApiError) {
+        throw new ConvexError({ message: err.message, code: err.code });
+      }
+      throw err;
+    }
+
+    const { updateSummary: _omit, ...planForStorage } = result;
+    void _omit;
+    const planJsonString = JSON.stringify(planForStorage);
+
+    const miniTasksPayload: {
+      parentTaskId: Id<"tasks">;
+      title: string;
+      scheduledDate: string;
+      minutes: number;
+      tier: PlanBlock["tier"];
+    }[] = [];
+
+    for (const [date, day] of Object.entries(result.days) as [string, { blocks: PlanBlock[] }][]) {
+      for (const block of day.blocks) {
+        miniTasksPayload.push({
+          parentTaskId: block.parent_task_id as Id<"tasks">,
+          title: block.title,
+          scheduledDate: date,
+          minutes: block.minutes,
+          tier: block.tier,
+        });
+      }
+    }
+
+    const planId: Id<"plans"> = await ctx.runMutation(internal.plansInternal.insertPlan, {
+      userId: base.userId,
+      planJson: planJsonString,
+      overloadScore: feasibilityPayload.overload.score,
+      periodStart: period.period_start,
+      periodEnd: period.period_end,
+      horizonDays: period.horizon_days,
+      updateReason,
+      updateSummary: result.updateSummary ?? undefined,
+      recoveryMode: isRecovery,
+      schedulerVersion: "deterministic-v1",
+      miniTasks: miniTasksPayload,
+    });
+
+    const planRow: Plan | null = await ctx.runQuery(internal.plansInternal.getPlanRow, { planId });
+    if (!planRow) {
+      throw new ConvexError({ message: "Plan not found after insert", code: "PLAN_MISSING" });
+    }
+
+    const messages = feasibilityPayload.recommendations.map((r) => r.message);
+
+    return {
+      success: true as const,
+      data: {
+        plan_json: planRow.plan_json,
+        overload_score: planRow.overload_score,
+        feasibility: feasibilityPayload.feasibility,
+        overload: feasibilityPayload.overload,
+        recommendations: feasibilityPayload.recommendations,
+        messages,
+        updatedAt: planRow.created_at,
+        updateReason: planRow.update_reason,
+        updateSummary: planRow.update_summary,
+        period_start: period.period_start,
+        period_end: period.period_end,
+        horizon_days: period.horizon_days,
+        plan: planRow,
+        drift: driftResult,
+        period,
+      },
+    };
+  },
+});
