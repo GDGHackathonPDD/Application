@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
 import { Geist_Mono, Public_Sans, IBM_Plex_Sans, Roboto } from "next/font/google";
+import { Analytics } from '@vercel/analytics/next';
 
 import "./globals.css";
 import { AppProviders } from "./providers";
@@ -26,6 +27,7 @@ export default function RootLayout({
       {/* suppressHydrationWarning: e.g. Cursor/VS Code injects `vsc-initialized` on <body> before hydrate */}
       <body suppressHydrationWarning>
         <AppProviders>{children}</AppProviders>
+        <Analytics />
       </body>
     </html>
   );
