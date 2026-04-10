@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "postinstall": "patch-package",
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
@@ -12,6 +13,7 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^6.36.5",
+    "@clerk/themes": "^2.4.57",
     "@phosphor-icons/react": "^2.1.10",
     "@remixicon/react": "^4.9.0",
     "@tabler/icons-react": "^3.41.1",
