@@ -5,13 +5,17 @@ Single Next.js app combining the **Convex + Clerk** backend with the **shadcn / 
 ## Setup
 
 1. Copy `.env.local.example` to `.env.local` and fill in Clerk and Convex values (see `backend/.agents/CONVEX_MIGRATION_PLAN.md` if you use the same deployment).
-2. Install dependencies: `npm install`
-3. Run Convex: `npx convex dev` (generates types and syncs functions).
-4. Run the app: `npm run dev`
+2. **Env:** `.env.local` at this `Application/` root holds Clerk, Convex, **`AGENT_API_*`**, and **`OPENROUTER_API_KEY`**. The Python Agent API lives in **`../agent-api/`** at the repo root and **reads `Application/.env.local` automatically** when present (see `../agent-api/README.md`). You can also use `agent-api/.env`. In the **Convex dashboard**, set `AGENT_API_URL` (e.g. `http://127.0.0.1:8000` locally, or your Cloud Run URL in production) and `AGENT_API_KEY` so actions can call `/decompose`, `/plan-copy`, and `/daily-summary`.
+3. **Agent API (Python):** `cd ../agent-api && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`
+4. Install dependencies: `npm install`
+5. Run Convex: `npx convex dev` (generates types and syncs functions).
+6. Run the Agent API: `npm run agent-api` (from this directory; uses `../agent-api`, reads env as above).
+7. Run the app: `npm run dev`
 
 ## Commands
 
 - `npm run dev` — Next.js with Turbopack
+- `npm run agent-api` — FastAPI Agent service in `../agent-api/` (needs `../agent-api/.venv`; env from `../agent-api/.env` **or** `Application/.env.local`)
 - `npm run build` — Production build (root layout uses `dynamic = "force-dynamic"` so a local build works without env; configure real keys for production)
 - `npm run lint` — ESLint
 
@@ -24,6 +28,7 @@ Single Next.js app combining the **Convex + Clerk** backend with the **shadcn / 
 
 ## Structure
 
+- `../agent-api/` — Python FastAPI agent (OpenRouter); deploy to Cloud Run — see `../agent-api/README.md`
 - `convex/` — Schema, queries, mutations, actions (source of truth)
 - `src/app/` — App Router, `providers.tsx` (Clerk → Convex → provision → theme), `proxy.ts` for Clerk route protection (Next.js 16)
 - `src/components/` — UI including `convex-provision-context.tsx` and Momentum screens

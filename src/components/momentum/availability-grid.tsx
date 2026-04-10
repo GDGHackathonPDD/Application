@@ -126,9 +126,11 @@ export function AvailabilityGrid({
               value={value[key]}
               onChange={(e) => {
                 const n = parseFloat(e.target.value)
+                const raw = Number.isFinite(n) ? n : 0
+                const clamped = Math.min(24, Math.max(0, raw))
                 onChange({
                   ...value,
-                  [key]: Number.isFinite(n) ? n : 0,
+                  [key]: clamped,
                 })
               }}
             />

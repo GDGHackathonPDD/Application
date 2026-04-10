@@ -1,11 +1,11 @@
-import { action } from "./_generated/server";
+import { action, internalAction, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { ApiError } from "./lib/errors";
 import { computeDrift } from "./lib/drift";
 import { computeFeasibilityPayload } from "./lib/feasibility";
-import { generatePlan } from "./lib/plan/generate";
+import { generatePlan, incrementalMergeNewTask } from "./lib/plan/generate";
 import { resolvePlanningPeriod } from "./lib/plan/period";
 import type {
   AvailabilityRow,
@@ -35,6 +35,18 @@ const periodMode = v.union(
   v.literal("calendar_month"),
   v.literal("date_range")
 );
+
+/**
+ * Whether Convex can call the Agent API for LLM decomposition (Mode B).
+ * Uses deployment env (Convex dashboard / `npx convex env`), not Next.js `.env.local`.
+ */
+export const agentPlanningConfig = query({
+  args: {},
+  handler: async () => {
+    const url = (process.env.AGENT_API_URL ?? "").trim();
+    return { agent_api_configured: url.length > 0 };
+  },
+});
 
 export const generate = action({
   args: {
@@ -205,5 +217,89 @@ export const generate = action({
         period,
       },
     };
+  },
+});
+
+export const mergeNewTaskPlan = internalAction({
+  args: { taskId: v.id("tasks") },
+  handler: async (ctx, args) => {
+    const taskRef = await ctx.runQuery(internal.plansInternal.getTaskForMerge, {
+      taskId: args.taskId,
+    });
+    if (!taskRef) {
+      return;
+    }
+
+    await ctx.runMutation(internal.plansInternal.deleteIncompleteMinisForParent, {
+      userId: taskRef.userId,
+      parentTaskId: args.taskId,
+    });
+
+    const mergeCtx = await ctx.runQuery(internal.plansInternal.getMergeContext, {
+      userId: taskRef.userId,
+      newTaskId: args.taskId,
+    });
+    if (!mergeCtx) {
+      return;
+    }
+
+    const period = resolvePlanningPeriod({
+      userDefaults: mergeCtx.userDefaults,
+      horizonFromDefaultsOnly: true,
+    });
+
+    const feasibilityPayload = computeFeasibilityPayload(
+      mergeCtx.tasks,
+      mergeCtx.availability,
+      period.period_start,
+      period.period_end
+    );
+
+    const preserved = mergeCtx.miniTasks.filter(
+      (m) => !m.completed && m.parent_task_id !== args.taskId
+    );
+
+    let result: Awaited<ReturnType<typeof incrementalMergeNewTask>>;
+    try {
+      result = await incrementalMergeNewTask(
+        mergeCtx.tasks,
+        mergeCtx.availability,
+        feasibilityPayload.feasibility,
+        period.period_start,
+        period.period_end,
+        args.taskId,
+        preserved
+      );
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "NO_REMAINING_WORK") {
+        return;
+      }
+      console.error("mergeNewTaskPlan failed:", err);
+      return;
+    }
+
+    const { newMiniTasksPayload, updateSummary: _omitUpdateSummary, ...planForStorage } = result;
+    void _omitUpdateSummary;
+    const planJsonString = JSON.stringify(planForStorage);
+
+    await ctx.runMutation(internal.plansInternal.insertPlan, {
+      userId: mergeCtx.userId,
+      planJson: planJsonString,
+      overloadScore: feasibilityPayload.overload.score,
+      periodStart: period.period_start,
+      periodEnd: period.period_end,
+      horizonDays: period.horizon_days,
+      updateReason: "tasks_changed",
+      updateSummary: result.updateSummary ?? undefined,
+      recoveryMode: planForStorage.meta.recovery_mode,
+      schedulerVersion: "deterministic-v1",
+      miniTasks: newMiniTasksPayload.map((mt) => ({
+        parentTaskId: mt.parentTaskId as Id<"tasks">,
+        title: mt.title,
+        scheduledDate: mt.scheduledDate,
+        minutes: mt.minutes,
+        tier: mt.tier,
+      })),
+    });
   },
 });

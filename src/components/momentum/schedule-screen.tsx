@@ -13,9 +13,11 @@ import {
 } from "@/components/ui/sheet"
 import { MOCK_AVAILABILITY } from "@/lib/mock/momentum"
 import type { WeeklyAvailability } from "@/lib/types/momentum"
+import { miniTasksForFocus } from "@/lib/momentum/plan-minis"
 import {
   buildCalendarPlanForWindow,
   computePlanningRange,
+  formatInclusiveRangeLabel,
 } from "@/lib/momentum/planning-window"
 import { countRangeDays } from "@/lib/momentum/week-grid"
 import type {
@@ -25,6 +27,8 @@ import type {
   UserPlan,
 } from "@/lib/types/momentum"
 
+import { GoogleScheduleSync } from "./google-schedule-sync"
+import { IcsExportPanel } from "./ics-export-panel"
 import { PlanningPeriodControls } from "./planning-period-controls"
 import {
   ScheduleCalendar,
@@ -116,13 +120,18 @@ export function ScheduleScreen({
     [router, searchParams]
   )
 
-  const minisForFocus = focusedTask
-    ? minisByParent.get(focusedTask.id) ?? []
-    : []
+  const minisForFocus = useMemo(() => {
+    if (!focusedTask) return []
+    return miniTasksForFocus(
+      plan,
+      focusedTask.id,
+      minisByParent.get(focusedTask.id) ?? []
+    )
+  }, [plan, focusedTask, minisByParent])
 
   return (
     <div className="-mx-4 -mt-8 -mb-8 flex h-[calc(100dvh-4.5rem)] flex-col overflow-hidden sm:-mx-6">
-      <div className="bg-background/95 supports-backdrop-filter:backdrop-blur-sm flex shrink-0 items-center gap-2 border-b px-2 py-2 sm:px-3">
+      <div className="bg-background/95 supports-backdrop-filter:backdrop-blur-sm flex shrink-0 items-center gap-3 border-b px-4 py-3.5 sm:px-5 sm:py-4">
         <PlanningPeriodControls
           variant="toolbar"
           preset={preset}
@@ -143,6 +152,20 @@ export function ScheduleScreen({
         </Button>
       </div>
 
+      <div className="shrink-0 px-4 pt-5 pb-1 sm:px-5 sm:pt-6">
+        <IcsExportPanel
+          plan={calendarPlan}
+          tasksById={tasksById}
+          rangeLabel={formatInclusiveRangeLabel(
+            range.periodStart,
+            range.periodEnd
+          )}
+          googleSync={
+            <GoogleScheduleSync plan={calendarPlan} tasksById={tasksById} />
+          }
+        />
+      </div>
+
       <div className="bg-background min-h-0 flex-1 overflow-auto">
         <ScheduleCalendar
           plan={calendarPlan}
@@ -151,7 +174,11 @@ export function ScheduleScreen({
           layout={calendarLayout}
           onSelectMini={(parentId) => setTaskQuery(parentId)}
           onSelectOverall={setTaskQuery}
-          className={calendarLayout === "weekGrid" ? "min-h-full p-2 sm:p-3" : "p-2 sm:p-3"}
+          className={
+            calendarLayout === "weekGrid"
+              ? "min-h-full px-4 pb-6 pt-2 sm:px-5 sm:pb-8 sm:pt-3"
+              : "px-4 pb-6 pt-2 sm:px-5 sm:pb-8 sm:pt-3"
+          }
         />
       </div>
 

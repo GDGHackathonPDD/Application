@@ -39,6 +39,6 @@ export default function TodayPage() {
   }
 
   return (
-    <TodayScreen dateIso={dateIso} tasks={tasks} initialTodayMinis={todayMinis} />
+    <TodayScreen dateIso={dateIso} tasks={tasks} todayMinis={todayMinis} />
   );
 }

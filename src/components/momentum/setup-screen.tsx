@@ -7,7 +7,7 @@ import {
   MinusIcon,
   PlusIcon,
 } from "@phosphor-icons/react";
-import { useMutation, useQuery, useAction } from "convex/react";
+import { useMutation, useQuery, useAction, useConvex } from "convex/react";
 import { ConvexError } from "convex/values";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -40,6 +40,7 @@ import type { OverallTask, WeeklyAvailability } from "@/lib/types/momentum";
 
 import { AvailabilityGrid } from "./availability-grid";
 import { CanvasIcsSection } from "./canvas-ics-section";
+import { GoogleCalendarSection } from "./google-calendar-section";
 import { type TaskRowErrors, TaskTable } from "./task-table";
 
 const COLORS = ["#6366f1", "#0ea5e9", "#22c55e", "#f59e0b", "#ec4899"];
@@ -101,7 +102,14 @@ function patchToConvex(patch: Partial<OverallTask>) {
   return p;
 }
 
+type AgentPlanningState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "ok"; agent_api_configured: boolean }
+  | { kind: "unavailable" };
+
 export function SetupScreen() {
+  const convex = useConvex();
   const { provisioned } = useConvexProvisioned();
   const tasksList = useQuery(api.tasks.list, provisioned ? {} : "skip");
   const availabilityList = useQuery(api.availability.list, provisioned ? {} : "skip");
@@ -133,13 +141,46 @@ export function SetupScreen() {
   const [syncing, setSyncing] = useState(false);
   const [canvasError, setCanvasError] = useState<string | null>(null);
   const [bulkHoursStep, setBulkHoursStep] = useState(DEFAULT_BULK_HOURS_STEP);
+  const [addTaskBusy, setAddTaskBusy] = useState(false);
+  const [addTaskError, setAddTaskError] = useState<string | null>(null);
+  const [agentPlanning, setAgentPlanning] = useState<AgentPlanningState>({
+    kind: "idle",
+  });
 
   const debouncers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   useEffect(() => {
+    if (!provisioned || !convex) {
+      setAgentPlanning({ kind: "idle" });
+      return;
+    }
+    let cancelled = false;
+    setAgentPlanning({ kind: "loading" });
+    convex
+      .query(api.plans.agentPlanningConfig, {})
+      .then((r) => {
+        if (!cancelled) {
+          setAgentPlanning({ kind: "ok", agent_api_configured: r.agent_api_configured });
+        }
+      })
+      .catch((err) => {
+        console.warn("[SetupScreen] agentPlanningConfig failed:", err);
+        if (!cancelled) {
+          setAgentPlanning({ kind: "unavailable" });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [provisioned, convex]);
+
+  useEffect(() => {
     if (!tasksList) return;
     setTasks(
-      tasksList.filter((t) => !t.parent_task_id).map(taskToOverallTask)
+      tasksList
+        .filter((t) => !t.parent_task_id)
+        .filter((t) => t.progress_percent < 100)
+        .map(taskToOverallTask)
     );
   }, [tasksList]);
 
@@ -182,6 +223,8 @@ export function SetupScreen() {
 
   const handleRemove = useCallback(
     async (id: string) => {
+      const pending = debouncers.current.get(id);
+      if (pending) clearTimeout(pending);
       debouncers.current.delete(id);
       setTasks((prev) => prev.filter((t) => t.id !== id));
       await removeTask({ taskId: id as Id<"tasks"> });
@@ -192,14 +235,27 @@ export function SetupScreen() {
   const handleAddRow = useCallback(async () => {
     const due = new Date();
     due.setDate(due.getDate() + 7);
-    await createTask({
-      title: "New task",
-      due_date: due.toISOString().slice(0, 10),
-      estimated_hours: 2,
-      priority: "medium",
-      progress_percent: 0,
-      color: COLORS[tasks.length % COLORS.length],
-    });
+    setAddTaskError(null);
+    setAddTaskBusy(true);
+    try {
+      /**
+       * `tasks.create` schedules `plans.mergeNewTaskPlan` (incremental plan + LLM
+       * decomposition for this task only). Do not also call `plans.generate`
+       * here — that full replan races the merge and can insert a second plan.
+       */
+      await createTask({
+        title: "New task",
+        due_date: due.toISOString().slice(0, 10),
+        estimated_hours: 2,
+        priority: "medium",
+        progress_percent: 0,
+        color: COLORS[tasks.length % COLORS.length],
+      });
+    } catch (e) {
+      setAddTaskError(readConvexErrorMessage(e));
+    } finally {
+      setAddTaskBusy(false);
+    }
   }, [createTask, tasks.length]);
 
   const handleAvailability = useCallback(
@@ -340,6 +396,50 @@ export function SetupScreen() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-8">
+          {agentPlanning.kind === "ok" && !agentPlanning.agent_api_configured ? (
+            <div
+              className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100"
+              role="status"
+            >
+              LLM step titles need the Agent API from Convex: set{" "}
+              <code className="rounded bg-background/80 px-1 py-0.5 font-mono text-xs">
+                AGENT_API_URL
+              </code>{" "}
+              (and{" "}
+              <code className="rounded bg-background/80 px-1 py-0.5 font-mono text-xs">
+                AGENT_API_KEY
+              </code>{" "}
+              if your Agent API requires it) in the{" "}
+              <strong>Convex dashboard → Settings → Environment Variables</strong>, not
+              only in <code className="font-mono text-xs">.env.local</code>. The Agent API
+              process also needs{" "}
+              <code className="rounded bg-background/80 px-1 py-0.5 font-mono text-xs">
+                OPENROUTER_API_KEY
+              </code>
+              .
+            </div>
+          ) : null}
+          {agentPlanning.kind === "unavailable" ? (
+            <div
+              className="rounded-lg border border-muted-foreground/25 bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+              role="status"
+            >
+              Could not load planning configuration from Convex. If this is production,
+              deploy the latest backend:{" "}
+              <code className="rounded bg-background/80 px-1 py-0.5 font-mono text-xs">
+                cd Application && npx convex deploy
+              </code>
+              , then set{" "}
+              <code className="rounded bg-background/80 px-1 py-0.5 font-mono text-xs">
+                AGENT_API_URL
+              </code>{" "}
+              (and{" "}
+              <code className="rounded bg-background/80 px-1 py-0.5 font-mono text-xs">
+                AGENT_API_KEY
+              </code>{" "}
+              if needed) in the Convex dashboard → Environment Variables.
+            </div>
+          ) : null}
           <div className="rounded-lg border bg-muted/20 p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-6">
               <div className="space-y-1.5">
@@ -368,52 +468,64 @@ export function SetupScreen() {
               </p>
             </div>
           </div>
-
           <TaskTable
             tasks={tasks}
             errors={submitAttempted ? errors : undefined}
             onChange={handleTaskChange}
             onRemove={handleRemove}
           />
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="gap-1.5"
-              disabled={tasks.length === 0}
-              onClick={() => handleBulkTaskEstimatedHours(1)}
-            >
-              <PlusIcon className="size-4" aria-hidden />
-              Add {formatBulkHoursStepLabel(bulkHoursStep)} h to each task
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="gap-1.5"
-              disabled={tasks.length === 0}
-              onClick={() => handleBulkTaskEstimatedHours(-1)}
-            >
-              <MinusIcon className="size-4" aria-hidden />
-              Subtract {formatBulkHoursStepLabel(bulkHoursStep)} h from each
-              task
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              disabled={tasks.length === 0}
-              onClick={handleResetTaskEstimatedHours}
-            >
-              <ArrowCounterClockwiseIcon className="size-4" aria-hidden />
-              Reset task estimates
-            </Button>
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="gap-1.5"
+                disabled={tasks.length === 0}
+                onClick={() => handleBulkTaskEstimatedHours(1)}
+              >
+                <PlusIcon className="size-4" aria-hidden />
+                Add {formatBulkHoursStepLabel(bulkHoursStep)} h to each task
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="gap-1.5"
+                disabled={tasks.length === 0}
+                onClick={() => handleBulkTaskEstimatedHours(-1)}
+              >
+                <MinusIcon className="size-4" aria-hidden />
+                Subtract {formatBulkHoursStepLabel(bulkHoursStep)} h from each
+                task
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                disabled={tasks.length === 0}
+                onClick={handleResetTaskEstimatedHours}
+              >
+                <ArrowCounterClockwiseIcon className="size-4" aria-hidden />
+                Reset task estimates
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleAddRow}
+                disabled={addTaskBusy}
+              >
+                {addTaskBusy ? "Adding…" : "Add task"}
+              </Button>
+            </div>
+            {addTaskError ? (
+              <p className="text-destructive text-sm" role="alert">
+                {addTaskError}
+              </p>
+            ) : null}
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={handleAddRow}>
-            Add task
-          </Button>
 
           <Separator />
 
@@ -446,6 +558,10 @@ export function SetupScreen() {
             syncDisabled={syncDisabled}
             syncDisabledReason={syncDisabledReason}
           />
+
+          <Separator />
+
+          <GoogleCalendarSection />
         </CardContent>
         <CardFooter className="flex flex-wrap gap-2">
           <Button

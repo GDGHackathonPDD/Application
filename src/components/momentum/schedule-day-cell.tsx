@@ -92,7 +92,11 @@ export function ScheduleDayCell({
       {day.overallDueTaskIds.length > 0 && (
         <div className="space-y-1">
           <p className="text-muted-foreground text-[9px] font-medium uppercase">
-            Due
+            Due today
+          </p>
+          <p className="text-muted-foreground text-[9px] leading-snug">
+            Deadlines on this date (overall task). Scheduled chunks appear under
+            Planned.
           </p>
           {day.overallDueTaskIds.map((id) => {
             const t = tasksById.get(id)

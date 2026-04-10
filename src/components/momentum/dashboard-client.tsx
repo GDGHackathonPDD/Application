@@ -26,12 +26,16 @@ import type {
   WeeklyAvailability,
 } from "@/lib/types/momentum"
 import { MOCK_AVAILABILITY } from "@/lib/mock/momentum"
+import { miniTasksForFocus } from "@/lib/momentum/plan-minis"
 import {
   buildCalendarPlanForWindow,
   computePlanningRange,
+  formatInclusiveRangeLabel,
 } from "@/lib/momentum/planning-window"
 
 import { FeasibilityBanner } from "./feasibility-banner"
+import { GoogleScheduleSync } from "./google-schedule-sync"
+import { IcsExportPanel } from "./ics-export-panel"
 import { PlanUpdateCallout } from "./plan-update-callout"
 import { ScheduleCalendar } from "./schedule-calendar"
 import { StatusBadge } from "./status-badge"
@@ -64,15 +68,21 @@ export function DashboardClient({
 
   const focusedTask = taskId ? tasksById.get(taskId) : undefined
 
-  const weekPlan = useMemo(() => {
+  const { weekPlan, weekRangeLabel } = useMemo(() => {
     const range = computePlanningRange("7", weekAnchor)
-    return buildCalendarPlanForWindow(
-      plan,
-      range.periodStart,
-      range.periodEnd,
-      weeklyAvailability,
-      tasks
-    )
+    return {
+      weekPlan: buildCalendarPlanForWindow(
+        plan,
+        range.periodStart,
+        range.periodEnd,
+        weeklyAvailability,
+        tasks
+      ),
+      weekRangeLabel: formatInclusiveRangeLabel(
+        range.periodStart,
+        range.periodEnd
+      ),
+    }
   }, [plan, tasks, weekAnchor, weeklyAvailability])
 
   const setTaskQuery = useCallback(
@@ -88,9 +98,14 @@ export function DashboardClient({
     [router, searchParams]
   )
 
-  const minisForFocus = focusedTask
-    ? initialMinisByParent.get(focusedTask.id) ?? []
-    : []
+  const minisForFocus = useMemo(() => {
+    if (!focusedTask) return []
+    return miniTasksForFocus(
+      plan,
+      focusedTask.id,
+      initialMinisByParent.get(focusedTask.id) ?? []
+    )
+  }, [plan, focusedTask, initialMinisByParent])
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-8">
@@ -156,7 +171,19 @@ export function DashboardClient({
         <CardHeader>
           <CardTitle>This week</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          <IcsExportPanel
+            plan={weekPlan}
+            tasksById={tasksById}
+            rangeLabel={weekRangeLabel}
+            googleSync={
+              <GoogleScheduleSync
+                plan={weekPlan}
+                tasksById={tasksById}
+                oauthReturnPath="/dashboard"
+              />
+            }
+          />
           <ScheduleCalendar
             plan={weekPlan}
             layout="singleRow"

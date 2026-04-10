@@ -6,13 +6,17 @@ function generateMiniTaskId(): string {
   return crypto.randomUUID();
 }
 
-interface SchedulerInput {
+export interface SchedulerInput {
   tasks: Task[];
   availability: AvailabilityRow[];
   period_start: string;
   period_end: string;
   recovery_mode: boolean;
   decompositionSteps?: Map<string, DecompositionStep[]>;
+  /** Minutes already committed on a calendar day (e.g. other parents' minis). */
+  reservedMinutesByDay?: Record<string, number>;
+  /** When set, only these overall tasks are scheduled. */
+  onlyParentTaskIds?: string[];
 }
 
 interface DayCapacity {
@@ -62,12 +66,22 @@ function compareSortKey(a: SortKey, b: SortKey): number {
   return b.remaining - a.remaining;
 }
 
+function dayCapLeft(
+  day: DayCapacity,
+  reservedMinutesByDay: Record<string, number> | undefined
+): number {
+  return Math.max(0, day.effectiveMinutes - (reservedMinutesByDay?.[day.date] ?? 0));
+}
+
 export function deterministicSchedulerModeA(input: SchedulerInput): PlanJson {
-  const { tasks, availability, period_start, period_end, recovery_mode } = input;
+  const { tasks, availability, period_start, period_end, recovery_mode, reservedMinutesByDay, onlyParentTaskIds } =
+    input;
   const chunkTarget = recovery_mode ? SCHEDULER_CONFIG.chunkTargetRecovery : SCHEDULER_CONFIG.chunkTarget;
 
+  const parentFilter = onlyParentTaskIds;
   const overallTasks = tasks
     .filter((t) => !t.parent_task_id && remainingMinutes(t) > 0)
+    .filter((t) => !parentFilter || parentFilter.includes(t.id))
     .sort((a, b) => compareSortKey(
       { dueDate: a.due_date, priorityRank: priorityRank(a.priority), remaining: remainingMinutes(a) },
       { dueDate: b.due_date, priorityRank: priorityRank(b.priority), remaining: remainingMinutes(b) }
@@ -86,7 +100,7 @@ export function deterministicSchedulerModeA(input: SchedulerInput): PlanJson {
 
   for (const day of days) {
     planDays[day.date] = { blocks: [] };
-    let capLeft = day.effectiveMinutes;
+    let capLeft = dayCapLeft(day, reservedMinutesByDay);
 
     while (capLeft >= SCHEDULER_CONFIG.chunkMin) {
       const eligible = overallTasks.filter(
@@ -149,14 +163,25 @@ export function deterministicSchedulerModeA(input: SchedulerInput): PlanJson {
 }
 
 export function deterministicSchedulerModeB(input: SchedulerInput): PlanJson {
-  const { tasks, availability, period_start, period_end, recovery_mode, decompositionSteps } = input;
+  const {
+    tasks,
+    availability,
+    period_start,
+    period_end,
+    recovery_mode,
+    decompositionSteps,
+    reservedMinutesByDay,
+    onlyParentTaskIds,
+  } = input;
 
   if (!decompositionSteps || decompositionSteps.size === 0) {
     return deterministicSchedulerModeA(input);
   }
 
+  const parentFilter = onlyParentTaskIds;
   const overallTasks = tasks
     .filter((t) => !t.parent_task_id && remainingMinutes(t) > 0)
+    .filter((t) => !parentFilter || parentFilter.includes(t.id))
     .sort((a, b) => compareSortKey(
       { dueDate: a.due_date, priorityRank: priorityRank(a.priority), remaining: remainingMinutes(a) },
       { dueDate: b.due_date, priorityRank: priorityRank(b.priority), remaining: remainingMinutes(b) }
@@ -191,7 +216,7 @@ export function deterministicSchedulerModeB(input: SchedulerInput): PlanJson {
 
   for (const day of days) {
     planDays[day.date] = { blocks: [] };
-    let capLeft = day.effectiveMinutes;
+    let capLeft = dayCapLeft(day, reservedMinutesByDay);
     let rotations = 0;
     const maxRotations = Q.length + 1;
 
