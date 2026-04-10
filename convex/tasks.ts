@@ -3,6 +3,8 @@ import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import { getAuthUser } from "./lib/auth";
 import { mapMiniTask, mapTask } from "./lib/mappers";
+import { recalculateParentProgressFromMinis } from "./lib/parentTaskProgress";
+import { computeMergedKey } from "./lib/taskDedupe";
 
 const priority = v.union(v.literal("low"), v.literal("medium"), v.literal("high"));
 const taskStatus = v.union(v.literal("todo"), v.literal("in_progress"), v.literal("done"));
@@ -81,6 +83,7 @@ export const create = mutation({
       });
       const doc = await ctx.db.get(id);
       if (!doc) throw new ConvexError({ message: "Insert failed", code: "INSERT_FAILED" });
+      await recalculateParentProgressFromMinis(ctx, args.parent_task_id);
       return { success: true as const, data: mapMiniTask(doc), kind: "mini" as const };
     }
 
@@ -93,6 +96,38 @@ export const create = mutation({
     }
 
     const now = Date.now();
+    const mergedKey = computeMergedKey(args.due_date!, title);
+    const sourceManual = args.source ?? "manual";
+
+    const duplicateOverall = await ctx.db
+      .query("tasks")
+      .withIndex("by_user_merged_key", (q) =>
+        q.eq("userId", user._id).eq("mergedKey", mergedKey)
+      )
+      .unique();
+    if (duplicateOverall && duplicateOverall.parentTaskId === undefined) {
+      await ctx.db.patch(duplicateOverall._id, {
+        title,
+        dueDate: args.due_date!,
+        estimatedHours: args.estimated_hours,
+        priority: args.priority ?? "medium",
+        progressPercent: args.progress_percent ?? duplicateOverall.progressPercent,
+        status: args.status ?? duplicateOverall.status,
+        color: args.color,
+        source: sourceManual,
+        lastSourceOfTruth: sourceManual,
+        mergedKey,
+        externalUid: args.external_uid ?? duplicateOverall.externalUid,
+        updatedAt: now,
+      });
+      const mergedDoc = await ctx.db.get(duplicateOverall._id);
+      if (!mergedDoc) throw new ConvexError({ message: "Update failed", code: "UPDATE_FAILED" });
+      await ctx.scheduler.runAfter(0, internal.plans.mergeNewTaskPlan, {
+        taskId: duplicateOverall._id,
+      });
+      return { success: true as const, data: mapTask(mergedDoc), kind: "overall" as const };
+    }
+
     const id = await ctx.db.insert("tasks", {
       userId: user._id,
       title,
@@ -102,7 +137,9 @@ export const create = mutation({
       progressPercent: args.progress_percent ?? 0,
       status: args.status ?? "todo",
       color: args.color,
-      source: args.source,
+      source: sourceManual,
+      lastSourceOfTruth: sourceManual,
+      mergedKey,
       externalUid: args.external_uid,
       createdAt: now,
       updatedAt: now,
@@ -156,6 +193,8 @@ export const update = mutation({
         progressPercent?: number;
         status?: "todo" | "in_progress" | "done";
         color?: string;
+        mergedKey?: string;
+        lastSourceOfTruth?: string;
         updatedAt: number;
       } = { updatedAt: Date.now() };
       if (p.title !== undefined) overallPatch.title = p.title.trim();
@@ -164,7 +203,6 @@ export const update = mutation({
         overallPatch.dueDate = p.due_date;
       }
       if (p.estimated_hours !== undefined) overallPatch.estimatedHours = p.estimated_hours;
-      if (p.priority !== undefined) overallPatch.priority = p.priority;
       if (p.progress_percent !== undefined) overallPatch.progressPercent = p.progress_percent;
       if (p.status !== undefined) overallPatch.status = p.status;
       if (p.color !== undefined) overallPatch.color = p.color === null ? undefined : p.color;
@@ -179,6 +217,18 @@ export const update = mutation({
         p.color !== undefined;
 
       if (hasOverallKeys) {
+        if (p.priority !== undefined) overallPatch.priority = p.priority;
+        const row = await ctx.db.get(args.taskId);
+        if (
+          row &&
+          (p.title !== undefined || p.due_date !== undefined) &&
+          row.parentTaskId === undefined
+        ) {
+          const nextTitle = overallPatch.title ?? row.title;
+          const nextDue = overallPatch.dueDate ?? row.dueDate;
+          overallPatch.mergedKey = computeMergedKey(nextDue, nextTitle);
+          overallPatch.lastSourceOfTruth = "manual";
+        }
         await ctx.db.patch(args.taskId, overallPatch);
         const doc = await ctx.db.get(args.taskId);
         if (doc) return { success: true as const, data: mapTask(doc), kind: "overall" as const };
@@ -210,7 +260,9 @@ export const update = mutation({
         miniPatch.completedAt = p.completed ? Date.now() : undefined;
       }
       if (Object.keys(miniPatch).length > 0) {
+        const parentId = existing.parentTaskId;
         await ctx.db.patch(args.miniTaskId, miniPatch);
+        await recalculateParentProgressFromMinis(ctx, parentId);
         const doc = await ctx.db.get(args.miniTaskId);
         if (doc) return { success: true as const, data: mapMiniTask(doc), kind: "mini" as const };
       }
@@ -251,7 +303,9 @@ export const remove = mutation({
     if (miniDoc.userId !== user._id) {
       throw new ConvexError({ message: "Task not found", code: "NOT_FOUND" });
     }
+    const parentId = miniDoc.parentTaskId;
     await ctx.db.delete(miniTaskId);
+    await recalculateParentProgressFromMinis(ctx, parentId);
     return { success: true as const };
   },
 });

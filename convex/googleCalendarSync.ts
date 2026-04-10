@@ -6,9 +6,9 @@ import { internal } from "./_generated/api";
 import { google } from "googleapis";
 import type { calendar_v3 } from "googleapis";
 import { colorForUid } from "./lib/canvas/ics";
+import { getOrCreateAiGendaCalendar } from "./lib/googleAiGendaCalendar";
+import { GOOGLE_CALENDAR_SCOPE_FULL } from "./lib/googleCalendarScopes";
 import { decryptToken } from "./lib/tokenCrypto";
-
-const CALENDAR_READONLY = "https://www.googleapis.com/auth/calendar.readonly";
 
 function eventToDueDate(event: {
   start?: { date?: string | null; dateTime?: string | null } | null;
@@ -58,10 +58,10 @@ export const sync = action({
     const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
     oauth2Client.setCredentials({
       refresh_token: refreshToken,
-      scope: CALENDAR_READONLY,
+      scope: GOOGLE_CALENDAR_SCOPE_FULL,
     });
 
-    const calendar = google.calendar({ version: "v3", auth: oauth2Client });
+    const cal = google.calendar({ version: "v3", auth: oauth2Client });
 
     const timeMin = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const timeMax = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString();
@@ -69,8 +69,19 @@ export const sync = action({
     let eventItems: calendar_v3.Schema$Event[] = [];
 
     try {
-      const res = await calendar.events.list({
-        calendarId: "primary",
+      const calendarId = await getOrCreateAiGendaCalendar(
+        cal,
+        ctxData.aigendaCalendarId
+      );
+      if (calendarId !== ctxData.aigendaCalendarId) {
+        await ctx.runMutation(internal.googleCalendar.setAigendaCalendarId, {
+          settingsId: ctxData.settingsId,
+          calendarId,
+        });
+      }
+
+      const res = await cal.events.list({
+        calendarId,
         timeMin,
         timeMax,
         singleEvents: true,

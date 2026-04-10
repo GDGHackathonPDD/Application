@@ -6,6 +6,7 @@ import {
 } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { getAuthUser } from "./lib/auth";
+import { upsertImportedOverallTask } from "./lib/importedTaskUpsert";
 import { encryptToken } from "./lib/tokenCrypto";
 
 export const getStatus = query({
@@ -24,6 +25,9 @@ export const getStatus = query({
       connectedEmail: row.connectedEmail,
       lastSyncAt: row.lastSyncAt,
       lastSyncStatus: row.lastSyncStatus,
+      lastPushAt: row.lastPushAt,
+      lastPushStatus: row.lastPushStatus,
+      hasAiGendaCalendar: Boolean(row.aigendaCalendarId),
     };
   },
 });
@@ -101,7 +105,33 @@ export const getSyncContextForAction = internalQuery({
       userId: user._id,
       settingsId: settings._id,
       encryptedRefreshToken: settings.encryptedRefreshToken,
+      aigendaCalendarId: settings.aigendaCalendarId,
     };
+  },
+});
+
+export const setAigendaCalendarId = internalMutation({
+  args: {
+    settingsId: v.id("googleCalendarSettings"),
+    calendarId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.settingsId, { aigendaCalendarId: args.calendarId });
+  },
+});
+
+export const patchPushResult = internalMutation({
+  args: {
+    settingsId: v.id("googleCalendarSettings"),
+    ok: v.boolean(),
+    status: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    await ctx.db.patch(args.settingsId, {
+      ...(args.ok ? { lastPushAt: now } : {}),
+      lastPushStatus: args.status,
+    });
   },
 });
 
@@ -119,41 +149,18 @@ export const applyGoogleCalendarSync = internalMutation({
     ),
   },
   handler: async (ctx, args) => {
-    const sourceTag = "google_calendar" as const;
     let upserted = 0;
     const now = Date.now();
     for (const e of args.events) {
-      const existing = await ctx.db
-        .query("tasks")
-        .withIndex("by_user_external", (q) =>
-          q.eq("userId", args.userId).eq("externalUid", e.uid)
-        )
-        .unique();
-      if (existing) {
-        await ctx.db.patch(existing._id, {
-          title: e.summary,
-          dueDate: e.dueDate,
-          color: e.color,
-          updatedAt: now,
-        });
-        upserted++;
-      } else {
-        await ctx.db.insert("tasks", {
-          userId: args.userId,
-          title: e.summary,
-          dueDate: e.dueDate,
-          estimatedHours: 2,
-          priority: "medium",
-          progressPercent: 0,
-          status: "todo",
-          source: sourceTag,
-          externalUid: e.uid,
-          color: e.color,
-          createdAt: now,
-          updatedAt: now,
-        });
-        upserted++;
-      }
+      await upsertImportedOverallTask(ctx, {
+        userId: args.userId,
+        source: "google_calendar",
+        uid: e.uid,
+        summary: e.summary,
+        dueDate: e.dueDate,
+        color: e.color,
+      });
+      upserted++;
     }
     await ctx.db.patch(args.settingsId, {
       lastSyncAt: now,
