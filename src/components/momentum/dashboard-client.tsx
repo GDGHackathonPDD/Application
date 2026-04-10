@@ -29,9 +29,11 @@ import { MOCK_AVAILABILITY } from "@/lib/mock/momentum"
 import {
   buildCalendarPlanForWindow,
   computePlanningRange,
+  formatInclusiveRangeLabel,
 } from "@/lib/momentum/planning-window"
 
 import { FeasibilityBanner } from "./feasibility-banner"
+import { IcsExportPanel } from "./ics-export-panel"
 import { PlanUpdateCallout } from "./plan-update-callout"
 import { ScheduleCalendar } from "./schedule-calendar"
 import { StatusBadge } from "./status-badge"
@@ -64,15 +66,21 @@ export function DashboardClient({
 
   const focusedTask = taskId ? tasksById.get(taskId) : undefined
 
-  const weekPlan = useMemo(() => {
+  const { weekPlan, weekRangeLabel } = useMemo(() => {
     const range = computePlanningRange("7", weekAnchor)
-    return buildCalendarPlanForWindow(
-      plan,
-      range.periodStart,
-      range.periodEnd,
-      weeklyAvailability,
-      tasks
-    )
+    return {
+      weekPlan: buildCalendarPlanForWindow(
+        plan,
+        range.periodStart,
+        range.periodEnd,
+        weeklyAvailability,
+        tasks
+      ),
+      weekRangeLabel: formatInclusiveRangeLabel(
+        range.periodStart,
+        range.periodEnd
+      ),
+    }
   }, [plan, tasks, weekAnchor, weeklyAvailability])
 
   const setTaskQuery = useCallback(
@@ -156,7 +164,12 @@ export function DashboardClient({
         <CardHeader>
           <CardTitle>This week</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          <IcsExportPanel
+            plan={weekPlan}
+            tasksById={tasksById}
+            rangeLabel={weekRangeLabel}
+          />
           <ScheduleCalendar
             plan={weekPlan}
             layout="singleRow"

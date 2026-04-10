@@ -16,6 +16,7 @@ import type { WeeklyAvailability } from "@/lib/types/momentum"
 import {
   buildCalendarPlanForWindow,
   computePlanningRange,
+  formatInclusiveRangeLabel,
 } from "@/lib/momentum/planning-window"
 import { countRangeDays } from "@/lib/momentum/week-grid"
 import type {
@@ -25,6 +26,7 @@ import type {
   UserPlan,
 } from "@/lib/types/momentum"
 
+import { IcsExportPanel } from "./ics-export-panel"
 import { PlanningPeriodControls } from "./planning-period-controls"
 import {
   ScheduleCalendar,
@@ -141,6 +143,17 @@ export function ScheduleScreen({
         >
           <Link href="/dashboard">Dashboard</Link>
         </Button>
+      </div>
+
+      <div className="shrink-0 px-2 pt-2 sm:px-3">
+        <IcsExportPanel
+          plan={calendarPlan}
+          tasksById={tasksById}
+          rangeLabel={formatInclusiveRangeLabel(
+            range.periodStart,
+            range.periodEnd
+          )}
+        />
       </div>
 
       <div className="bg-background min-h-0 flex-1 overflow-auto">

@@ -27,3 +27,6 @@ yarn-error.log*
 .vercel
 
 *.tsbuildinfo
+
+# clerk configuration (can include secrets)
+/.clerk/
