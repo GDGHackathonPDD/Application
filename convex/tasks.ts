@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
+import { internal } from "./_generated/api";
 import { getAuthUser } from "./lib/auth";
 import { mapMiniTask, mapTask } from "./lib/mappers";
 
@@ -108,6 +109,7 @@ export const create = mutation({
     });
     const doc = await ctx.db.get(id);
     if (!doc) throw new ConvexError({ message: "Insert failed", code: "INSERT_FAILED" });
+    await ctx.scheduler.runAfter(0, internal.plans.mergeNewTaskPlan, { taskId: id });
     return { success: true as const, data: mapTask(doc), kind: "overall" as const };
   },
 });
