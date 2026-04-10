@@ -38,14 +38,19 @@ export default defineSchema({
     status: taskStatus,
     color: v.optional(v.string()),
     source: v.optional(v.string()),
+    /** Last calendar/import source that wrote this row (ICS, Google, manual). */
+    lastSourceOfTruth: v.optional(v.string()),
     externalUid: v.optional(v.string()),
+    /** Dedupe key: dueDate + normalized title (overall tasks). */
+    mergedKey: v.optional(v.string()),
     scheduledDate: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_user_due", ["userId", "dueDate"])
     .index("by_parent", ["parentTaskId"])
-    .index("by_user_external", ["userId", "externalUid"]),
+    .index("by_user_external", ["userId", "externalUid"])
+    .index("by_user_merged_key", ["userId", "mergedKey"]),
 
   miniTasks: defineTable({
     userId: v.id("users"),
@@ -111,5 +116,19 @@ export default defineSchema({
     uploadedFileName: v.optional(v.string()),
     lastSyncAt: v.optional(v.number()),
     lastSyncStatus: v.optional(v.string()),
+  }).index("by_user", ["userId"]),
+
+  /** Google Calendar API OAuth (refresh token encrypted with GOOGLE_OAUTH_ENCRYPTION_KEY). */
+  googleCalendarSettings: defineTable({
+    userId: v.id("users"),
+    encryptedRefreshToken: v.string(),
+    connectedEmail: v.optional(v.string()),
+    connectedAt: v.number(),
+    lastSyncAt: v.optional(v.number()),
+    lastSyncStatus: v.optional(v.string()),
+    /** Secondary calendar used for Schedule → Google push ("AiGenda Calendar"). */
+    aigendaCalendarId: v.optional(v.string()),
+    lastPushAt: v.optional(v.number()),
+    lastPushStatus: v.optional(v.string()),
   }).index("by_user", ["userId"]),
 });

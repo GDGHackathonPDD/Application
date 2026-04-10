@@ -1,8 +1,11 @@
 "use client"
 
 import Link from "next/link"
-import { useState } from "react"
+import { useCallback, useState } from "react"
+import { useMutation } from "convex/react"
+import { ConvexError } from "convex/values"
 
+import { api } from "@convex/_generated/api"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -15,16 +18,26 @@ import type { MiniTask, OverallTask } from "@/lib/types/momentum"
 
 import { TodayChecklist } from "./today-checklist"
 
+function readConvexErrorMessage(e: unknown): string {
+  if (e instanceof ConvexError) {
+    const d = e.data as { message?: string }
+    if (typeof d?.message === "string") return d.message
+  }
+  if (e instanceof Error) return e.message
+  return String(e)
+}
+
 export function TodayScreen({
   dateIso,
   tasks,
-  initialTodayMinis,
+  todayMinis,
 }: {
   dateIso: string
   tasks: OverallTask[]
-  initialTodayMinis: MiniTask[]
+  todayMinis: MiniTask[]
 }) {
-  const [minis, setMinis] = useState(initialTodayMinis)
+  const [error, setError] = useState<string | null>(null)
+  const updateChecklist = useMutation(api.checklist.update)
 
   const tasksById = new Map(tasks.map((t) => [t.id, t]))
 
@@ -36,6 +49,18 @@ export function TodayScreen({
       day: "numeric",
       year: "numeric",
     }
+  )
+
+  const onToggleComplete = useCallback(
+    async (miniTaskId: string, completed: boolean) => {
+      setError(null)
+      try {
+        await updateChecklist({ id: miniTaskId, completed })
+      } catch (e) {
+        setError(readConvexErrorMessage(e))
+      }
+    },
+    [updateChecklist]
   )
 
   return (
@@ -56,20 +81,22 @@ export function TodayScreen({
         <CardHeader>
           <CardTitle>Checklist</CardTitle>
           <CardDescription>
-            Mark steps complete; progress rolls up when the backend is wired.
+            Mark steps complete; parent task progress updates from completed time
+            blocks.
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {error ? (
+            <p className="text-destructive mb-3 text-sm" role="alert">
+              {error}
+            </p>
+          ) : null}
           <TodayChecklist
             dateLabel={dateLabel}
             summaryLine="Focus on must-do items first; optional blocks are bonus depth."
-            items={minis}
+            items={todayMinis}
             tasksById={tasksById}
-            onToggleComplete={(id, done) =>
-              setMinis((prev) =>
-                prev.map((m) => (m.id === id ? { ...m, completed: done } : m))
-              )
-            }
+            onToggleComplete={onToggleComplete}
           />
         </CardContent>
       </Card>

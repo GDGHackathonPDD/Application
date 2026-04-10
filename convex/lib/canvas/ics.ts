@@ -102,7 +102,10 @@ export function assertCanvasIcsFeedUrlAllowed(feedUrl: string): void {
     throw new Error("ICS feed must use HTTPS");
   }
   const host = url.hostname.toLowerCase();
+  /** Google Calendar “secret address in iCal format” (Option A in setup). */
+  const allowedGoogleCalendar = host === "calendar.google.com";
   const allowedDefault =
+    allowedGoogleCalendar ||
     host === "instructure.com" ||
     host.endsWith(".instructure.com") ||
     host.endsWith(".canvaslms.com");
@@ -110,6 +113,7 @@ export function assertCanvasIcsFeedUrlAllowed(feedUrl: string): void {
   if (!allowedDefault && !allowedExtra) {
     throw new Error(
       "ICS host not allowed. Use your school’s Canvas URL (e.g. *.instructure.com), " +
+        "a Google Calendar secret iCal URL (calendar.google.com), " +
         "or upload an .ics file you want to add to your schedule."
     );
   }

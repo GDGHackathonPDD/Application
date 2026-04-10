@@ -4,6 +4,7 @@ import { TrashIcon } from "@phosphor-icons/react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { IsoDatePicker } from "@/components/ui/iso-date-picker"
 import {
   Select,
   SelectContent,
@@ -15,6 +16,17 @@ import type { OverallTask, TaskPriority } from "@/lib/types/momentum"
 import { cn } from "@/lib/utils"
 
 const PRIORITIES: TaskPriority[] = ["low", "medium", "high"]
+
+function lastSourceLabel(t: OverallTask): string | null {
+  const raw = t.lastSourceOfTruth
+  if (raw === "canvas_ics") return "Canvas (feed)"
+  if (raw === "ics_upload") return "ICS upload"
+  if (raw === "google_calendar") return "Google"
+  if (raw === "manual") return "Manual"
+  if (t.source === "canvas") return "Canvas"
+  if (t.source === "ics") return "ICS import"
+  return null
+}
 
 export interface TaskRowErrors {
   title?: string
@@ -54,6 +66,7 @@ export function TaskTable({
           <tbody>
             {tasks.map((t) => {
               const rowErr = errors?.[t.id]
+              const sourceLine = lastSourceLabel(t)
               return (
                 <tr key={t.id} className="border-b last:border-0">
                   <td className="px-3 py-2 align-top">
@@ -77,28 +90,23 @@ export function TaskTable({
                             {rowErr.title}
                           </p>
                         )}
-                        {t.source === "canvas" && (
-                          <span className="text-muted-foreground mt-1 inline-block text-[10px]">
-                            From Canvas
+                        {sourceLine ? (
+                          <span className="text-muted-foreground mt-1 block text-[10px]">
+                            Last source: {sourceLine}
                           </span>
-                        )}
-                        {t.source === "ics" && (
-                          <span className="text-muted-foreground mt-1 inline-block text-[10px]">
-                            From ICS import
-                          </span>
-                        )}
+                        ) : null}
                       </div>
                     </div>
                   </td>
                   <td className="px-3 py-2 align-top">
-                    <Input
-                      type="date"
+                    <IsoDatePicker
                       value={t.dueDate}
-                      onChange={(e) =>
-                        onChange(t.id, { dueDate: e.target.value })
-                      }
+                      onChange={(iso) => onChange(t.id, { dueDate: iso })}
                       aria-invalid={!!rowErr?.dueDate}
-                      className={cn(rowErr?.dueDate && "border-destructive")}
+                      buttonClassName={cn(
+                        "h-9 min-w-[10.25rem] max-w-[13rem] justify-between text-sm",
+                        rowErr?.dueDate && "border-destructive"
+                      )}
                     />
                     {rowErr?.dueDate && (
                       <p className="text-destructive mt-1 text-xs">

@@ -1,7 +1,9 @@
 import { internalMutation, internalQuery } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { getAuthUser } from "./lib/auth";
 import { mapAvailability, mapMiniTask, mapPlan, mapTask } from "./lib/mappers";
+import { recalculateParentProgressFromMinis } from "./lib/parentTaskProgress";
 import type { MiniTask, Task } from "./lib/types";
 
 const planUpdateReason = v.union(
@@ -50,7 +52,9 @@ export const insertPlan = internalMutation({
       createdAt: Date.now(),
     });
 
+    const parentIds = new Set<Id<"tasks">>();
     for (const mt of args.miniTasks) {
+      parentIds.add(mt.parentTaskId);
       await ctx.db.insert("miniTasks", {
         userId: args.userId,
         parentTaskId: mt.parentTaskId,
@@ -61,6 +65,10 @@ export const insertPlan = internalMutation({
         tier: mt.tier,
         completed: false,
       });
+    }
+
+    for (const pid of parentIds) {
+      await recalculateParentProgressFromMinis(ctx, pid);
     }
 
     return planId;
@@ -200,5 +208,6 @@ export const deleteIncompleteMinisForParent = internalMutation({
         await ctx.db.delete(r._id);
       }
     }
+    await recalculateParentProgressFromMinis(ctx, args.parentTaskId);
   },
 });

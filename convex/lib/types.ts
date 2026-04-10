@@ -28,7 +28,9 @@ export interface Task {
   status: TaskStatus;
   color: string | null;
   source: string | null;
+  last_source_of_truth: string | null;
   external_uid: string | null;
+  merged_key: string | null;
   scheduled_date: string | null;
   created_at: string;
   updated_at: string;
