@@ -64,7 +64,9 @@ export function AccountSettings() {
 
   const [newEmail, setNewEmail] = React.useState("");
   const [emailCode, setEmailCode] = React.useState("");
-  const [pendingEmailId, setPendingEmailId] = React.useState<string | null>(null);
+  const [pendingEmailId, setPendingEmailId] = React.useState<string | null>(
+    null,
+  );
   const [pendingEmail, setPendingEmail] = React.useState(false);
 
   const [currentPassword, setCurrentPassword] = React.useState("");
@@ -208,7 +210,10 @@ export function AccountSettings() {
   if (!isLoaded) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
-        <IconLoader2 className="text-muted-foreground size-8 animate-spin" aria-hidden />
+        <IconLoader2
+          className="text-muted-foreground size-8 animate-spin"
+          aria-hidden
+        />
       </div>
     );
   }
@@ -244,15 +249,25 @@ export function AccountSettings() {
       >
         <div className="md:w-52 shrink-0">
           <div className="mb-4">
-            <h1 className="font-heading text-lg font-semibold tracking-tight">Account</h1>
-            <p className="text-muted-foreground text-sm">Manage your account info.</p>
+            <h1 className="font-heading text-lg font-semibold tracking-tight">
+              Account
+            </h1>
+            <p className="text-muted-foreground text-sm">
+              Manage your account info.
+            </p>
           </div>
-          <TabsList variant="line" className="flex w-full flex-col gap-0.5 bg-transparent p-0">
+          <TabsList
+            variant="line"
+            className="flex w-full flex-col gap-0.5 bg-transparent p-0"
+          >
             <TabsTrigger value="profile" className="w-full justify-start gap-2">
               <IconUser className="size-4" aria-hidden />
               Profile
             </TabsTrigger>
-            <TabsTrigger value="security" className="w-full justify-start gap-2">
+            <TabsTrigger
+              value="security"
+              className="w-full justify-start gap-2"
+            >
               <IconShield className="size-4" aria-hidden />
               Security
             </TabsTrigger>
@@ -264,13 +279,23 @@ export function AccountSettings() {
             <Card>
               <CardHeader>
                 <CardTitle>Profile</CardTitle>
-                <CardDescription>Photo and name shown in Aigenda.</CardDescription>
+                <CardDescription>
+                  Photo and name shown in Aigenda.
+                </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-6 sm:flex-row sm:items-start">
                 <div className="flex flex-col items-start gap-3">
                   <Avatar size="lg" className="size-20">
-                    <AvatarImage src={user.imageUrl} alt="" />
-                    <AvatarFallback className="text-lg">{initials(user)}</AvatarFallback>
+                    <AvatarImage
+                      src={user.imageUrl}
+                      alt={
+                        `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() ||
+                        "User avatar"
+                      }
+                    />
+                    <AvatarFallback className="text-lg">
+                      {initials(user)}
+                    </AvatarFallback>
                   </Avatar>
                   <input
                     ref={fileInputRef}
@@ -287,13 +312,19 @@ export function AccountSettings() {
                     onClick={() => fileInputRef.current?.click()}
                   >
                     {pendingProfile ? (
-                      <IconLoader2 className="size-4 animate-spin" aria-hidden />
+                      <IconLoader2
+                        className="size-4 animate-spin"
+                        aria-hidden
+                      />
                     ) : (
                       "Update photo"
                     )}
                   </Button>
                 </div>
-                <form onSubmit={onSaveProfile} className="flex min-w-0 flex-1 flex-col gap-4">
+                <form
+                  onSubmit={onSaveProfile}
+                  className="flex min-w-0 flex-1 flex-col gap-4"
+                >
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="acc-first">First name</Label>
@@ -321,7 +352,10 @@ export function AccountSettings() {
                   <div className="flex justify-end">
                     <Button type="submit" disabled={pendingProfile}>
                       {pendingProfile ? (
-                        <IconLoader2 className="size-4 animate-spin" aria-hidden />
+                        <IconLoader2
+                          className="size-4 animate-spin"
+                          aria-hidden
+                        />
                       ) : (
                         "Save profile"
                       )}
@@ -337,7 +371,10 @@ export function AccountSettings() {
                 <CardDescription>Your unique handle.</CardDescription>
               </CardHeader>
               <CardContent>
-                <form onSubmit={onSaveUsername} className="flex flex-col gap-4 sm:flex-row sm:items-end">
+                <form
+                  onSubmit={onSaveUsername}
+                  className="flex flex-col gap-4 sm:flex-row sm:items-end"
+                >
                   <div className="flex min-w-0 flex-1 flex-col gap-2">
                     <Label htmlFor="acc-user">Username</Label>
                     <Input
@@ -350,9 +387,16 @@ export function AccountSettings() {
                       autoComplete="username"
                     />
                   </div>
-                  <Button type="submit" className="shrink-0" disabled={pendingProfile}>
+                  <Button
+                    type="submit"
+                    className="shrink-0"
+                    disabled={pendingProfile}
+                  >
                     {pendingProfile ? (
-                      <IconLoader2 className="size-4 animate-spin" aria-hidden />
+                      <IconLoader2
+                        className="size-4 animate-spin"
+                        aria-hidden
+                      />
                     ) : (
                       "Update username"
                     )}
@@ -364,7 +408,9 @@ export function AccountSettings() {
             <Card>
               <CardHeader>
                 <CardTitle>Email addresses</CardTitle>
-                <CardDescription>Used for sign-in and notifications.</CardDescription>
+                <CardDescription>
+                  Used for sign-in and notifications.
+                </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
                 <ul className="flex flex-col gap-2">
@@ -376,7 +422,9 @@ export function AccountSettings() {
                         className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2"
                       >
                         <div className="flex min-w-0 flex-wrap items-center gap-2">
-                          <span className="truncate text-sm">{em.emailAddress}</span>
+                          <span className="truncate text-sm">
+                            {em.emailAddress}
+                          </span>
                           {isPrimary ? (
                             <Badge variant="secondary" className="shrink-0">
                               Primary
@@ -390,20 +438,29 @@ export function AccountSettings() {
                         </div>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon-sm" aria-label="Email actions">
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label="Email actions"
+                            >
                               <IconDotsVertical className="size-4" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            {!isPrimary && em.verification?.status === "verified" ? (
+                            {!isPrimary &&
+                            em.verification?.status === "verified" ? (
                               <DropdownMenuItem
                                 onSelect={(ev) => {
                                   ev.preventDefault();
                                   clearMessages();
                                   void user
                                     .update({ primaryEmailAddressId: em.id })
-                                    .then(() => setSuccess("Primary email updated."))
-                                    .catch((err) => setError(getClerkErrorMessage(err)));
+                                    .then(() =>
+                                      setSuccess("Primary email updated."),
+                                    )
+                                    .catch((err) =>
+                                      setError(getClerkErrorMessage(err)),
+                                    );
                                 }}
                               >
                                 Make primary
@@ -418,7 +475,9 @@ export function AccountSettings() {
                                   void em
                                     .destroy()
                                     .then(() => setSuccess("Email removed."))
-                                    .catch((err) => setError(getClerkErrorMessage(err)));
+                                    .catch((err) =>
+                                      setError(getClerkErrorMessage(err)),
+                                    );
                                 }}
                               >
                                 Remove
@@ -447,9 +506,16 @@ export function AccountSettings() {
                       }}
                       disabled={!!pendingEmailId || pendingEmail}
                     />
-                    <Button type="submit" variant="secondary" disabled={pendingEmail || !!pendingEmailId}>
+                    <Button
+                      type="submit"
+                      variant="secondary"
+                      disabled={pendingEmail || !!pendingEmailId}
+                    >
                       {pendingEmail ? (
-                        <IconLoader2 className="size-4 animate-spin" aria-hidden />
+                        <IconLoader2
+                          className="size-4 animate-spin"
+                          aria-hidden
+                        />
                       ) : (
                         "Add email"
                       )}
@@ -458,7 +524,10 @@ export function AccountSettings() {
                 </form>
 
                 {pendingEmailId ? (
-                  <form onSubmit={onVerifyNewEmail} className="flex flex-col gap-2 rounded-lg bg-muted/40 p-4">
+                  <form
+                    onSubmit={onVerifyNewEmail}
+                    className="flex flex-col gap-2 rounded-lg bg-muted/40 p-4"
+                  >
                     <Label htmlFor="acc-email-code">Verification code</Label>
                     <div className="flex flex-col gap-2 sm:flex-row">
                       <Input
@@ -473,7 +542,10 @@ export function AccountSettings() {
                       />
                       <Button type="submit" disabled={pendingEmail}>
                         {pendingEmail ? (
-                          <IconLoader2 className="size-4 animate-spin" aria-hidden />
+                          <IconLoader2
+                            className="size-4 animate-spin"
+                            aria-hidden
+                          />
                         ) : (
                           "Verify"
                         )}
@@ -500,11 +572,15 @@ export function AccountSettings() {
             <Card>
               <CardHeader>
                 <CardTitle>Connected accounts</CardTitle>
-                <CardDescription>Social sign-in linked to your profile.</CardDescription>
+                <CardDescription>
+                  Social sign-in linked to your profile.
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 {user.externalAccounts.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">No connected accounts.</p>
+                  <p className="text-muted-foreground text-sm">
+                    No connected accounts.
+                  </p>
                 ) : (
                   <ul className="flex flex-col gap-2">
                     {user.externalAccounts.map((ex) => (
@@ -514,10 +590,15 @@ export function AccountSettings() {
                       >
                         <div className="flex items-center gap-2">
                           {ex.provider === "google" ? (
-                            <IconBrandGoogle className="size-4 shrink-0" aria-hidden />
+                            <IconBrandGoogle
+                              className="size-4 shrink-0"
+                              aria-hidden
+                            />
                           ) : null}
                           <span className="text-sm">{ex.providerTitle()}</span>
-                          <span className="text-muted-foreground truncate text-sm">{ex.emailAddress}</span>
+                          <span className="text-muted-foreground truncate text-sm">
+                            {ex.emailAddress}
+                          </span>
                         </div>
                       </li>
                     ))}
@@ -568,7 +649,9 @@ export function AccountSettings() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="acc-confirm-pw">Confirm new password</Label>
+                        <Label htmlFor="acc-confirm-pw">
+                          Confirm new password
+                        </Label>
                         <Input
                           id="acc-confirm-pw"
                           type="password"
@@ -585,7 +668,10 @@ export function AccountSettings() {
                   <CardFooter className="justify-end">
                     <Button type="submit" disabled={pendingPassword}>
                       {pendingPassword ? (
-                        <IconLoader2 className="size-4 animate-spin" aria-hidden />
+                        <IconLoader2
+                          className="size-4 animate-spin"
+                          aria-hidden
+                        />
                       ) : (
                         "Update password"
                       )}
@@ -598,11 +684,15 @@ export function AccountSettings() {
             <Card>
               <CardHeader>
                 <CardTitle>Two-factor authentication</CardTitle>
-                <CardDescription>Extra protection for your account.</CardDescription>
+                <CardDescription>
+                  Extra protection for your account.
+                </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-2 text-sm">
                 <p>
-                  <span className="text-muted-foreground">Authenticator app: </span>
+                  <span className="text-muted-foreground">
+                    Authenticator app:{" "}
+                  </span>
                   {user.totpEnabled ? (
                     <span className="text-foreground">On</span>
                   ) : (

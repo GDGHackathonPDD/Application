@@ -80,7 +80,9 @@ export function UserAccountMenu() {
   }
 
   const name = displayName(user);
-  const handle = user.username ? `@${user.username}` : user.primaryEmailAddress?.emailAddress ?? "";
+  const handle = user.username
+    ? `@${user.username}`
+    : (user.primaryEmailAddress?.emailAddress ?? "");
 
   return (
     <DropdownMenu>
@@ -92,7 +94,7 @@ export function UserAccountMenu() {
           aria-label="Open account menu"
         >
           <Avatar size="default" className="size-9">
-            <AvatarImage src={user.imageUrl} alt="" />
+            <AvatarImage src={user.imageUrl} alt={name} />
             <AvatarFallback>{initialsFromUser(user)}</AvatarFallback>
           </Avatar>
         </Button>
@@ -100,20 +102,26 @@ export function UserAccountMenu() {
       <DropdownMenuContent align="end" className="w-60">
         <div className="flex gap-2.5 px-2 py-2">
           <Avatar size="default" className="size-10">
-            <AvatarImage src={user.imageUrl} alt="" />
+            <AvatarImage src={user.imageUrl} alt={name} />
             <AvatarFallback>{initialsFromUser(user)}</AvatarFallback>
           </Avatar>
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="truncate text-sm font-medium">{name}</span>
             {handle ? (
-              <span className="text-muted-foreground truncate text-xs">{handle}</span>
+              <span className="text-muted-foreground truncate text-xs">
+                {handle}
+              </span>
             ) : null}
           </div>
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link href="/account" className="cursor-pointer gap-2">
-            <IconSettings className="size-4" data-icon="inline-start" aria-hidden />
+            <IconSettings
+              className="size-4"
+              data-icon="inline-start"
+              aria-hidden
+            />
             Manage account
           </Link>
         </DropdownMenuItem>

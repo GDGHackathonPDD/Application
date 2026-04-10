@@ -1,6 +1,12 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 
 import { SignUpForm } from "@/components/auth/sign-up-form";
+
+export const metadata: Metadata = {
+  title: "Sign Up",
+  robots: { index: false, follow: false },
+};
 
 function SignUpFallback() {
   return (
