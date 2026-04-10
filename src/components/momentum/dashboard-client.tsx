@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useCallback, useMemo } from "react"
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -29,16 +29,16 @@ import { MOCK_AVAILABILITY } from "@/lib/mock/momentum"
 import { miniTasksForFocus } from "@/lib/momentum/plan-minis"
 import {
   buildCalendarPlanForWindow,
-  computePlanningRange,
   formatInclusiveRangeLabel,
 } from "@/lib/momentum/planning-window"
+import { getVisibleWeekRange } from "@/lib/momentum/week-grid"
 
 import { FeasibilityBanner } from "./feasibility-banner"
 import { GoogleScheduleSync } from "./google-schedule-sync"
 import { IcsExportPanel } from "./ics-export-panel"
 import { PlanUpdateCallout } from "./plan-update-callout"
 import { ScheduleCalendar } from "./schedule-calendar"
-import { StatusBadge } from "./status-badge"
+import { DriftStatusBadges, StatusBadge } from "./status-badge"
 import { TaskFocusPanel } from "./task-focus-panel"
 
 export function DashboardClient({
@@ -48,6 +48,7 @@ export function DashboardClient({
   initialMinisByParent,
   weekAnchor = new Date(),
   weeklyAvailability = MOCK_AVAILABILITY,
+  drift,
 }: {
   tasks: OverallTask[]
   plan: UserPlan
@@ -56,6 +57,12 @@ export function DashboardClient({
   /** Calendar “today” / week window anchor */
   weekAnchor?: Date
   weeklyAvailability?: WeeklyAvailability
+  /** When set, extra badges (e.g. falling behind) stack next to feasibility. */
+  drift?: {
+    fallingBehind: boolean
+    fallingBehindWork: boolean
+    atRisk: boolean
+  }
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -68,32 +75,42 @@ export function DashboardClient({
 
   const focusedTask = taskId ? tasksById.get(taskId) : undefined
 
+  const [weekOffset, setWeekOffset] = useState(0)
+  const pendingWindowScrollY = useRef<number | null>(null)
+
+  useLayoutEffect(() => {
+    if (pendingWindowScrollY.current === null) return
+    const y = pendingWindowScrollY.current
+    pendingWindowScrollY.current = null
+    window.scrollTo({ top: y, left: 0, behavior: "auto" })
+  }, [weekOffset])
+
   const { weekPlan, weekRangeLabel } = useMemo(() => {
-    const range = computePlanningRange("7", weekAnchor)
+    const { periodStart, periodEnd } = getVisibleWeekRange(
+      weekAnchor,
+      weekOffset
+    )
     return {
       weekPlan: buildCalendarPlanForWindow(
         plan,
-        range.periodStart,
-        range.periodEnd,
+        periodStart,
+        periodEnd,
         weeklyAvailability,
         tasks
       ),
-      weekRangeLabel: formatInclusiveRangeLabel(
-        range.periodStart,
-        range.periodEnd
-      ),
+      weekRangeLabel: formatInclusiveRangeLabel(periodStart, periodEnd),
     }
-  }, [plan, tasks, weekAnchor, weeklyAvailability])
+  }, [plan, tasks, weekAnchor, weekOffset, weeklyAvailability])
 
   const setTaskQuery = useCallback(
     (id: string | null) => {
       if (!id) {
-        router.push("/dashboard")
+        router.push("/dashboard", { scroll: false })
         return
       }
       const q = new URLSearchParams(searchParams.toString())
       q.set("task", id)
-      router.push(`/dashboard?${q.toString()}`)
+      router.push(`/dashboard?${q.toString()}`, { scroll: false })
     },
     [router, searchParams]
   )
@@ -114,6 +131,13 @@ export function DashboardClient({
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-semibold tracking-tight">Recovery</h1>
             <StatusBadge status={feasibility.status} />
+            {drift ? (
+              <DriftStatusBadges
+                fallingBehind={drift.fallingBehind}
+                fallingBehindWork={drift.fallingBehindWork}
+                atRisk={drift.atRisk}
+              />
+            ) : null}
           </div>
           <p className="text-muted-foreground max-w-2xl text-sm">
             {feasibility.headline}
@@ -125,7 +149,9 @@ export function DashboardClient({
             <Link href="/today">Today</Link>
           </Button>
           <Button type="button" variant="outline" size="sm" asChild>
-            <Link href="/schedule">Full schedule</Link>
+            <Link href="/schedule" scroll={false}>
+              Full schedule
+            </Link>
           </Button>
         </div>
       </div>
@@ -168,10 +194,53 @@ export function DashboardClient({
       )}
 
       <Card>
-        <CardHeader>
-          <CardTitle>This week</CardTitle>
+        <CardHeader className="space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-1">
+              <CardTitle>Weekly schedule</CardTitle>
+              <p className="text-muted-foreground text-sm tabular-nums">
+                {weekRangeLabel}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  pendingWindowScrollY.current = window.scrollY
+                  setWeekOffset((w) => w - 1)
+                }}
+              >
+                Previous week
+              </Button>
+              <Button
+                type="button"
+                variant={weekOffset === 0 ? "secondary" : "outline"}
+                size="sm"
+                disabled={weekOffset === 0}
+                onClick={() => {
+                  pendingWindowScrollY.current = window.scrollY
+                  setWeekOffset(0)
+                }}
+              >
+                This week
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  pendingWindowScrollY.current = window.scrollY
+                  setWeekOffset((w) => w + 1)
+                }}
+              >
+                Next week
+              </Button>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 pb-8">
           <IcsExportPanel
             plan={weekPlan}
             tasksById={tasksById}
@@ -184,14 +253,16 @@ export function DashboardClient({
               />
             }
           />
-          <ScheduleCalendar
-            plan={weekPlan}
-            layout="singleRow"
-            tasksById={tasksById}
-            today={weekAnchor}
-            onSelectMini={(parentId) => setTaskQuery(parentId)}
-            onSelectOverall={setTaskQuery}
-          />
+          <div className="min-h-[min(48vh,26rem)] pb-4 sm:min-h-[min(52vh,32rem)]">
+            <ScheduleCalendar
+              plan={weekPlan}
+              layout="singleRow"
+              tasksById={tasksById}
+              today={weekAnchor}
+              onSelectMini={(parentId) => setTaskQuery(parentId)}
+              onSelectOverall={setTaskQuery}
+            />
+          </div>
         </CardContent>
       </Card>
 
@@ -201,7 +272,10 @@ export function DashboardClient({
           if (!o) setTaskQuery(null)
         }}
       >
-        <SheetContent className="gap-6 overflow-y-auto p-6 pb-10 pt-5 sm:max-w-md sm:p-8 sm:pb-12">
+        <SheetContent
+          className="gap-6 overflow-y-auto p-6 pb-10 pt-5 sm:max-w-md sm:p-8 sm:pb-12"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
           {focusedTask && (
             <>
               <SheetHeader className="space-y-1.5 p-0 pr-14 pt-1">

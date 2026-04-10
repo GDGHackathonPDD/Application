@@ -1,6 +1,6 @@
 "use client"
 
-import { TrashIcon } from "@phosphor-icons/react"
+import { CheckIcon, TrashIcon } from "@phosphor-icons/react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,11 +39,14 @@ export function TaskTable({
   tasks,
   onChange,
   onRemove,
+  onMarkDone,
   errors,
 }: {
   tasks: OverallTask[]
   onChange: (id: string, patch: Partial<OverallTask>) => void
   onRemove: (id: string) => void
+  /** Sets progress to 100% (e.g. already finished before calendar import). */
+  onMarkDone?: (id: string) => void
   errors?: Record<string, TaskRowErrors>
 }) {
   return (
@@ -52,7 +55,7 @@ export function TaskTable({
         <p className="text-sm font-medium">Tasks</p>
       </div>
       <div className="overflow-x-auto rounded-xl border">
-        <table className="w-full min-w-[720px] text-left text-sm">
+        <table className="w-full min-w-[780px] text-left text-sm">
           <thead className="bg-muted/50 text-muted-foreground border-b text-xs uppercase">
             <tr>
               <th className="px-3 py-2 font-medium">Title</th>
@@ -60,6 +63,9 @@ export function TaskTable({
               <th className="px-3 py-2 font-medium">Est. h</th>
               <th className="px-3 py-2 font-medium">Priority</th>
               <th className="px-3 py-2 font-medium">Progress %</th>
+              {onMarkDone ? (
+                <th className="px-3 py-2 font-medium w-10" aria-label="Mark done" />
+              ) : null}
               <th className="px-3 py-2 font-medium w-10" />
             </tr>
           </thead>
@@ -178,6 +184,22 @@ export function TaskTable({
                       </p>
                     )}
                   </td>
+                  {onMarkDone ? (
+                    <td className="px-3 py-2 align-top">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon-sm"
+                        className="shrink-0"
+                        disabled={t.progressPercent >= 100}
+                        onClick={() => onMarkDone(t.id)}
+                        title="Mark done (already finished)"
+                        aria-label={`Mark ${t.title} done`}
+                      >
+                        <CheckIcon className="size-4" />
+                      </Button>
+                    </td>
+                  ) : null}
                   <td className="px-3 py-2 align-top">
                     <Button
                       type="button"

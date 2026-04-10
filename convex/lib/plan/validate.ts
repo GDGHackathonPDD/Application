@@ -1,11 +1,14 @@
 import { z } from 'zod';
 
+import { PLAN_BLOCK_MINUTES_MAX, SCHEDULER_CONFIG } from '../config';
+
 export const PlanBlockSchema = z.object({
   mini_task_id: z.string(),
   parent_task_id: z.string(),
   title: z.string().max(200),
-  minutes: z.number().int().min(5).max(120),
+  minutes: z.number().int().min(5).max(PLAN_BLOCK_MINUTES_MAX),
   tier: z.enum(['must', 'should', 'optional']),
+  plan_order: z.number().int().min(0).optional(),
 });
 
 export const PlanDaySchema = z.object({
@@ -49,34 +52,25 @@ export function clampPlanDailyMinutes(
       return { ...block, minutes: adjustedMinutes };
     });
 
+    const nonNull = clampedBlocks.filter((b): b is NonNullable<typeof b> => b !== null);
+    // Drop sub-chunk leftovers that violate PlanBlockSchema (minutes floor).
+    const valid = nonNull.filter((b) => b.minutes >= SCHEDULER_CONFIG.chunkMin);
+
     clamped.days[date] = {
       ...day,
-      blocks: clampedBlocks.filter((b): b is NonNullable<typeof b> => b !== null),
+      blocks: valid,
     };
   }
 
   return clamped;
 }
 
+/** Pass-through: scheduler may place work after due to finish parent A before scheduling parent B. */
 export function enforceDeadlineRule(
   plan: ValidatedPlanJson,
-  parentDueDates: Map<string, string>
+  _parentDueDates: Map<string, string>
 ): ValidatedPlanJson {
-  const enforced = { ...plan, days: { ...plan.days } };
-
-  for (const [date, day] of Object.entries(enforced.days)) {
-    const filtered = day.blocks.filter((block) => {
-      const due = parentDueDates.get(block.parent_task_id);
-      if (!due) return true;
-      return date <= due;
-    });
-
-    if (filtered.length !== day.blocks.length) {
-      enforced.days[date] = { ...day, blocks: filtered };
-    }
-  }
-
-  return enforced;
+  return plan;
 }
 
 export function validatePlanJson(raw: unknown): ValidatedPlanJson {
@@ -85,7 +79,7 @@ export function validatePlanJson(raw: unknown): ValidatedPlanJson {
 
 export const DecompositionStepSchema = z.object({
   title: z.string().min(1).max(200),
-  minutes: z.number().int().min(5).max(120),
+  minutes: z.number().int().min(5).max(PLAN_BLOCK_MINUTES_MAX),
 });
 
 export const DecompositionResultSchema = z.object({

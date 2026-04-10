@@ -4,7 +4,12 @@ export type Tier = 'must' | 'should' | 'optional';
 export type FeasibilityStatus = 'FEASIBLE' | 'FEASIBLE_FRAGILE' | 'INFEASIBLE';
 export type OverloadLabel = 'stable' | 'drifting' | 'overloaded';
 export type PeriodMode = 'rolling' | 'calendar_month' | 'date_range';
-export type PlanUpdateReason = 'initial' | 'manual_regenerate' | 'auto_drift' | 'tasks_changed';
+export type PlanUpdateReason =
+  | 'initial'
+  | 'manual_regenerate'
+  | 'auto_drift'
+  | 'tasks_changed'
+  | 'availability_changed';
 
 export interface User {
   id: string;
@@ -30,8 +35,14 @@ export interface Task {
   source: string | null;
   last_source_of_truth: string | null;
   external_uid: string | null;
+  /** From ICS sync (`CATEGORIES` or URL); same key → planner keeps one calendar together. */
+  calendar_group_key?: string | null;
   merged_key: string | null;
   scheduled_date: string | null;
+  /** Overall tasks: lower = scheduled first. Omitted on legacy rows → planner uses due/priority fallback. */
+  plan_sequence?: number | null;
+  /** ICS SEQUENCE / file order; lower first within `calendar_group_key`. */
+  ics_sequence?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -70,6 +81,8 @@ export interface MiniTask {
   tier: Tier;
   completed: boolean;
   completed_at: string | null;
+  /** Per parent execution order (matches plan block). Omitted on legacy rows → treat as 0. */
+  plan_order?: number;
 }
 
 export interface AvailabilityRow {
@@ -100,6 +113,8 @@ export interface PlanBlock {
   title: string;
   minutes: number;
   tier: Tier;
+  /** Per parent: 0 = first step, 1 = second, … (scheduler and UI use this, not title sort). */
+  plan_order?: number;
 }
 
 export interface PlanDay {
@@ -162,6 +177,20 @@ export interface OverloadResult {
   label: OverloadLabel;
 }
 
+/** Per overall task: remaining work exceeds hours available between window_start and window_end (usually today→due). */
+export interface TaskWindowShortfall {
+  task_id: string;
+  title: string;
+  due_date: string;
+  remaining_hours: number;
+  window_start: string;
+  window_end: string;
+  available_hours_in_window: number;
+  shortfall_hours: number;
+  /** Due date is before the planning window start — recovery capacity is only within the horizon. */
+  overdue: boolean;
+}
+
 export interface FeasibilityResult {
   status: FeasibilityStatus;
   remaining_work_hours: number;
@@ -171,6 +200,8 @@ export interface FeasibilityResult {
   shortfall_capped_hours: number;
   daily_cap_hours: number;
   buffer_ratio: number;
+  /** Assignments that cannot fit in available hours from today through due (or horizon if overdue). */
+  task_window_shortfalls?: TaskWindowShortfall[];
 }
 
 export interface ExpandSuggestion {
@@ -201,7 +232,10 @@ export type DriftChannel =
   | 'MUST_DO_STREAK_MISS';
 
 export interface DriftResult {
+  /** True when the full drift norm (all channels) exceeds the threshold. */
   falling_behind: boolean;
+  /** True when work-execution channels only exceed the threshold — drives recovery mode and auto_drift. Excludes e.g. schedule staleness. */
+  falling_behind_work: boolean;
   at_risk: boolean;
   drift_score: number;
   drift_score_norm: number;

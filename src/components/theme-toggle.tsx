@@ -9,25 +9,21 @@ import { cn } from "@/lib/utils";
 
 export function ThemeToggle({ className }: { className?: string }) {
   const { resolvedTheme, setTheme } = useTheme();
-  const [mounted, setMounted] = React.useState(false);
+  const hydrated = React.useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
 
-  React.useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) {
+  if (!hydrated) {
     return (
-      <Button
-        variant="outline"
-        size="icon-sm"
-        className={cn("shrink-0", className)}
-        type="button"
-        disabled
-        aria-label="Toggle theme"
-        aria-busy="true"
-      >
-        <Sun className="size-4 opacity-0" aria-hidden />
-      </Button>
+      <span
+        className={cn(
+          "inline-flex size-8 shrink-0 rounded-[min(var(--radius-md),10px)] border border-transparent",
+          className
+        )}
+        aria-hidden="true"
+      />
     );
   }
 

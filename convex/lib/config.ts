@@ -17,15 +17,21 @@ export const OVERLOAD_BANDS = {
 
 export type OverloadLabel = keyof typeof OVERLOAD_BANDS;
 
+/** Hard ceiling for stored plan blocks / minis (no artificial scheduler chunk cap — only safety bound). */
+export const PLAN_BLOCK_MINUTES_MAX = 24 * 60;
+
 export const SCHEDULER_CONFIG = {
-  chunkTarget: 25,
+  /** Preferred block length when slicing work (Mode A fallback, recovery target). */
+  chunkTarget: 60,
   chunkMin: 15,
-  chunkMax: 40,
-  chunkTargetRecovery: 20,
-  schedulerVersion: 'deterministic-v1',
+  chunkTargetRecovery: 60,
+  /** Sequential tasks; place work as late as feasible while keeping unfinished work first next day. */
+  schedulerVersion: 'deterministic-v15-latest-feasible-serial',
 } as const;
 
 export const DRIFT_CONFIG = {
+  /** Incomplete minis scheduled in [period_start, …] for this many calendar days (inclusive) count toward slippage. */
+  slippageWindowDays: 7,
   weights: {
     OVERLOAD_OR_FEASIBILITY: 1.0,
     SLIPPAGE_BLOCKS: 0.8,

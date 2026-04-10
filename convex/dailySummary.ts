@@ -87,7 +87,8 @@ export const runForUser = internalAction({
       input.tasks,
       input.availability,
       input.todayStr,
-      periodEndStr
+      periodEndStr,
+      input.todayStr
     );
 
     const summaryText = await generateDailySummary(input.items, feasibility, null);

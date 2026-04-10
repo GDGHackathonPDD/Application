@@ -11,6 +11,7 @@ export type PlanUpdateReason =
   | "manual_regenerate"
   | "auto_drift"
   | "tasks_changed"
+  | "availability_changed"
 
 export type PlanningPeriodPreset = "7" | "month" | "custom"
 
@@ -35,6 +36,10 @@ export interface MiniTask {
   minutes: number
   tier: MiniTaskTier
   completed: boolean
+  /** ISO timestamp when marked complete; from Convex `completedAt` */
+  completedAt?: string | null
+  /** Per parent: 0 = do this step first (matches planner block order). */
+  planOrder?: number
 }
 
 export interface PlanBlockPayload {
@@ -43,6 +48,7 @@ export interface PlanBlockPayload {
   title: string
   minutes: number
   tier: MiniTaskTier
+  planOrder?: number
 }
 
 export interface PlanDay {
@@ -67,6 +73,15 @@ export interface UserPlan {
   updateSummary?: string
 }
 
+export interface TaskWindowShortfallUi {
+  title: string
+  dueDate: string
+  remainingHours: number
+  availableHours: number
+  shortfallHours: number
+  overdue: boolean
+}
+
 export interface FeasibilityPayload {
   status: FeasibilityStatus
   headline: string
@@ -76,6 +91,8 @@ export interface FeasibilityPayload {
   shortfallHours?: number
   overloadScore?: number
   suggestions: string[]
+  /** Per-assignment: not enough calendar hours from today through due (server `task_window_shortfalls`). */
+  taskWindowShortfalls?: TaskWindowShortfallUi[]
 }
 
 export interface WeeklyAvailability {

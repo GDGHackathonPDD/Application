@@ -19,6 +19,8 @@ export async function upsertImportedOverallTask(
     summary: string;
     dueDate: string;
     color: string;
+    calendarGroupKey?: string;
+    icsSequence?: number;
   }
 ): Promise<void> {
   const mergedKey = computeMergedKey(args.dueDate, args.summary);
@@ -51,6 +53,9 @@ export async function upsertImportedOverallTask(
       title: args.summary,
       dueDate: args.dueDate,
       color: args.color,
+      calendarGroupKey: args.calendarGroupKey,
+      icsSequence: args.icsSequence,
+      planSequence: undefined,
       mergedKey,
       lastSourceOfTruth: args.source,
       source: args.source,
@@ -73,6 +78,8 @@ export async function upsertImportedOverallTask(
     mergedKey,
     lastSourceOfTruth: args.source,
     color: args.color,
+    calendarGroupKey: args.calendarGroupKey,
+    icsSequence: args.icsSequence,
     createdAt: now,
     updatedAt: now,
   });

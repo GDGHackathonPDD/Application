@@ -13,7 +13,8 @@ const planUpdateReason = v.union(
   v.literal("initial"),
   v.literal("manual_regenerate"),
   v.literal("auto_drift"),
-  v.literal("tasks_changed")
+  v.literal("tasks_changed"),
+  v.literal("availability_changed")
 );
 
 export default defineSchema({
@@ -41,9 +42,15 @@ export default defineSchema({
     /** Last calendar/import source that wrote this row (ICS, Google, manual). */
     lastSourceOfTruth: v.optional(v.string()),
     externalUid: v.optional(v.string()),
+    /** From ICS `CATEGORIES` / `URL` at sync; tasks with same key schedule as one block. */
+    calendarGroupKey: v.optional(v.string()),
     /** Dedupe key: dueDate + normalized title (overall tasks). */
     mergedKey: v.optional(v.string()),
     scheduledDate: v.optional(v.string()),
+    /** Overall tasks only: lower = scheduled first in planner (sequential execution order). */
+    planSequence: v.optional(v.number()),
+    /** ICS `SEQUENCE` or file-order index at sync; lower = do first within the same calendar group. */
+    icsSequence: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -62,6 +69,8 @@ export default defineSchema({
     tier,
     completed: v.boolean(),
     completedAt: v.optional(v.number()),
+    /** Per parent: 0 = first step to do; aligns with plan_json block order. */
+    planOrder: v.optional(v.number()),
   })
     .index("by_user_scheduled", ["userId", "scheduledDate"])
     .index("by_parent_task", ["parentTaskId"])
@@ -105,6 +114,15 @@ export default defineSchema({
     summaryText: v.string(),
     sentAt: v.optional(v.number()),
     createdAt: v.number(),
+  }).index("by_user_for_date", ["userId", "forDate"]),
+
+  dailyOverdueAcknowledgments: defineTable({
+    userId: v.id("users"),
+    forDate: v.string(),
+    acknowledgedAt: v.number(),
+    yesterdayOverdueCount: v.number(),
+    totalOverdueCount: v.number(),
+    totalOverdueMinutes: v.number(),
   }).index("by_user_for_date", ["userId", "forDate"]),
 
   canvasIcsSettings: defineTable({

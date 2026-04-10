@@ -77,7 +77,10 @@ export async function generateDailySummary(
     })),
     feasibility_snippet: feasibilitySnippet,
     drift_context: driftResult
-      ? { falling_behind: driftResult.falling_behind, reason_codes: driftResult.reason_codes }
+      ? {
+          falling_behind: driftResult.falling_behind_work,
+          reason_codes: driftResult.reason_codes,
+        }
       : undefined,
   };
 

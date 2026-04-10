@@ -48,13 +48,15 @@ export const check = query({
         max_auto_horizon_days: user.maxAutoHorizonDays ?? null,
       },
       horizonFromDefaultsOnly: args.planning_horizon_days === undefined,
+      userTimeZone: user.timezone,
     });
 
     const payload = computeFeasibilityPayload(
       tasks,
       availability,
       period.period_start,
-      period.period_end
+      period.period_end,
+      user.timezone
     );
 
     return { success: true as const, data: { ...payload, period } };

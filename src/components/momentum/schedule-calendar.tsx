@@ -10,7 +10,19 @@ import { ScheduleDayCell } from "./schedule-day-cell"
 
 const WEEK_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const
 
-export type ScheduleCalendarLayout = "horizontal" | "weekGrid" | "singleRow"
+export type ScheduleCalendarLayout =
+  | "horizontal"
+  | "weekGrid"
+  | "twoRowStrip"
+  | "singleRow"
+
+function chunkDays<T>(items: T[], chunkSize: number): T[][] {
+  const rows: T[][] = []
+  for (let i = 0; i < items.length; i += chunkSize) {
+    rows.push(items.slice(i, i + chunkSize))
+  }
+  return rows
+}
 
 export function ScheduleCalendar({
   plan,
@@ -67,7 +79,7 @@ export function ScheduleCalendar({
             return (
             <div
               key={rowKey}
-              className="grid min-h-[14rem] grid-cols-7 gap-2 sm:min-h-[16rem]"
+              className="grid min-h-[14rem] grid-cols-7 items-start gap-2 sm:min-h-[16rem]"
             >
               {row.cells.map((cell) => {
                 if (cell.kind === "out") {
@@ -107,10 +119,50 @@ export function ScheduleCalendar({
     )
   }
 
+  if (layout === "twoRowStrip") {
+    const rows = chunkDays(plan.days, 7)
+    return (
+      <div
+        className={cn(
+          "flex min-h-0 flex-1 flex-col gap-3 sm:gap-4",
+          className
+        )}
+      >
+        {rows.map((rowDays, rowIdx) => (
+          <div
+            key={rowDays[0]?.date ?? rowIdx}
+            className={cn(
+              "rounded-2xl border p-2 shadow-sm sm:p-3",
+              rowIdx === 0
+                ? "border-border/60 bg-card/40"
+                : "border-border/50 bg-muted/25"
+            )}
+          >
+            <div className="grid min-h-0 grid-cols-7 items-start gap-2">
+              {rowDays.map((day) => (
+                <ScheduleDayCell
+                  key={day.date}
+                  day={day}
+                  dateIso={day.date}
+                  isPadding={false}
+                  tasksById={tasksById}
+                  today={today}
+                  compact
+                  onSelectMini={onSelectMini}
+                  onSelectOverall={onSelectOverall}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   if (layout === "singleRow") {
     return (
       <div
-        className={cn("grid min-h-0 gap-2", className)}
+        className={cn("grid min-h-0 items-start gap-2", className)}
         style={{
           gridTemplateColumns: `repeat(${plan.days.length}, minmax(0, 1fr))`,
         }}
@@ -138,7 +190,7 @@ export function ScheduleCalendar({
         className
       )}
     >
-      <div className="flex min-w-max gap-3">
+      <div className="flex min-w-max items-start gap-3">
         {plan.days.map((day) => (
           <ScheduleDayCell
             key={day.date}

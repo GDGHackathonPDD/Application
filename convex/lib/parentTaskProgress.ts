@@ -23,9 +23,17 @@ export async function recalculateParentProgressFromMinis(
     return;
   }
 
-  const total = minis.reduce((s, m) => s + m.minutes, 0);
-  const done = minis.filter((m) => m.completed).reduce((s, m) => s + m.minutes, 0);
-  const progressPercent = total > 0 ? Math.round((done / total) * 100) : 0;
+  const totalMinutes = minis.reduce((s, m) => s + Math.max(0, m.minutes), 0);
+  let progressPercent: number;
+  if (totalMinutes <= 0) {
+    const doneCount = minis.filter((m) => m.completed).length;
+    progressPercent = Math.round((doneCount / minis.length) * 100);
+  } else {
+    const doneMinutes = minis
+      .filter((m) => m.completed)
+      .reduce((s, m) => s + Math.max(0, m.minutes), 0);
+    progressPercent = Math.min(100, Math.round((doneMinutes / totalMinutes) * 100));
+  }
 
   let status: "todo" | "in_progress" | "done" = "todo";
   if (progressPercent >= 100) status = "done";
