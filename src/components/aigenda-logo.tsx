@@ -16,31 +16,36 @@ export type AigendaLogoProps = {
   size?: number
   showWordmark?: boolean
   showTagline?: boolean
+  /** Only the interactive mark (no column layout); use beside inline titles. */
+  markOnly?: boolean
+  /**
+   * When true, omit inner `group` so a parent with `group` (e.g. a Link) drives
+   * `group-hover` on the mark.
+   */
+  parentGroup?: boolean
 }
 
 /**
  * Aigenda mark from `Aigendalogodesign/aigenda-logo.svg` with hover motion
  * from `Aigendalogodesign/src/app/App.tsx` (staggered grid, transitions, wordmark).
  */
-export function AigendaLogo({
-  className,
-  size = 80,
-  showWordmark = false,
-  showTagline = false,
-}: AigendaLogoProps) {
+function AigendaLogoMark({
+  size,
+  parentGroup,
+}: {
+  size: number
+  parentGroup?: boolean
+}) {
   return (
     <div
       className={cn(
-        "flex flex-col items-center gap-8 text-primary",
-        className
+        "relative shrink-0 cursor-pointer text-primary",
+        !parentGroup && "group"
       )}
+      style={{ width: size, height: size }}
+      role="img"
+      aria-label="Aigenda"
     >
-      <div
-        className="group relative cursor-pointer text-primary"
-        style={{ width: size, height: size }}
-        role="img"
-        aria-label="Aigenda"
-      >
         <svg
           className="absolute inset-0 size-full"
           viewBox="0 0 80 80"
@@ -133,7 +138,34 @@ export function AigendaLogo({
             />
           </g>
         </svg>
-      </div>
+    </div>
+  )
+}
+
+export function AigendaLogo({
+  className,
+  size = 80,
+  showWordmark = false,
+  showTagline = false,
+  markOnly = false,
+  parentGroup = false,
+}: AigendaLogoProps) {
+  const mark = (
+    <AigendaLogoMark size={size} parentGroup={parentGroup} />
+  )
+
+  if (markOnly) {
+    return <div className={cn("inline-flex", className)}>{mark}</div>
+  }
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center gap-8 text-primary",
+        className
+      )}
+    >
+      {mark}
 
       {showWordmark ? (
         <div className="group flex cursor-pointer items-baseline gap-0">

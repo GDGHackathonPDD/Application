@@ -18,8 +18,8 @@ const fontMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Momentum Coach",
-  description: "Plan and stay on track with Convex + Clerk",
+  title: "Aigenda",
+  description: "Intelligent productivity — plan and stay on track with Convex + Clerk",
 };
 
 export default function RootLayout({
