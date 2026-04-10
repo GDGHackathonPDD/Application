@@ -26,6 +26,7 @@ import type {
   WeeklyAvailability,
 } from "@/lib/types/momentum"
 import { MOCK_AVAILABILITY } from "@/lib/mock/momentum"
+import { miniTasksForFocus } from "@/lib/momentum/plan-minis"
 import {
   buildCalendarPlanForWindow,
   computePlanningRange,
@@ -96,9 +97,14 @@ export function DashboardClient({
     [router, searchParams]
   )
 
-  const minisForFocus = focusedTask
-    ? initialMinisByParent.get(focusedTask.id) ?? []
-    : []
+  const minisForFocus = useMemo(() => {
+    if (!focusedTask) return []
+    return miniTasksForFocus(
+      plan,
+      focusedTask.id,
+      initialMinisByParent.get(focusedTask.id) ?? []
+    )
+  }, [plan, focusedTask, initialMinisByParent])
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-8">

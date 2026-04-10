@@ -115,13 +115,19 @@ async function fetchDecompositionForParents(
       }
     );
 
-    if (response.decompositions) {
+    if (response.decompositions?.length) {
       for (const d of response.decompositions) {
         const parsed = DecompositionResultSchema.safeParse(d);
         if (parsed.success) {
           stepsMap.set(parsed.data.parent_task_id, parsed.data.steps);
         }
       }
+    }
+    if (stepsMap.size === 0 && overallTasks.length > 0) {
+      console.warn(
+        'Decomposition empty or failed validation — using chunk fallback. ' +
+          'Check Convex AGENT_API_URL, Agent API OPENROUTER_API_KEY, and Convex logs.'
+      );
     }
   } catch (err) {
     console.error('LLM decomposition failed, will use Mode A fallback:', err);

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/sheet"
 import { MOCK_AVAILABILITY } from "@/lib/mock/momentum"
 import type { WeeklyAvailability } from "@/lib/types/momentum"
+import { miniTasksForFocus } from "@/lib/momentum/plan-minis"
 import {
   buildCalendarPlanForWindow,
   computePlanningRange,
@@ -118,9 +119,14 @@ export function ScheduleScreen({
     [router, searchParams]
   )
 
-  const minisForFocus = focusedTask
-    ? minisByParent.get(focusedTask.id) ?? []
-    : []
+  const minisForFocus = useMemo(() => {
+    if (!focusedTask) return []
+    return miniTasksForFocus(
+      plan,
+      focusedTask.id,
+      minisByParent.get(focusedTask.id) ?? []
+    )
+  }, [plan, focusedTask, minisByParent])
 
   return (
     <div className="-mx-4 -mt-8 -mb-8 flex h-[calc(100dvh-4.5rem)] flex-col overflow-hidden sm:-mx-6">
