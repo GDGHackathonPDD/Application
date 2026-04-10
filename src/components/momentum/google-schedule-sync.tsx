@@ -11,6 +11,7 @@ import {
 } from "@phosphor-icons/react"
 
 import { api } from "@convex/_generated/api"
+import { AppLoadingLogo } from "@/components/app-loading-logo"
 import { Button } from "@/components/ui/button"
 import { useConvexProvisioned } from "@/components/convex-provision-context"
 import { buildPlanGooglePushPayload } from "@/lib/momentum/plan-to-google-events"
@@ -102,12 +103,8 @@ function GoogleScheduleSyncInner({
 
   if (!provisioned || status === undefined) {
     return (
-      <div className="flex gap-3" aria-busy="true" aria-label="Loading Google Calendar">
-        <div className="bg-background/80 ring-border flex size-11 shrink-0 animate-pulse rounded-lg ring-1" />
-        <div className="min-w-0 flex-1 space-y-2">
-          <div className="h-5 max-w-[14rem] animate-pulse rounded-md bg-muted" />
-          <div className="h-3 max-w-[min(100%,24rem)] animate-pulse rounded-md bg-muted/80" />
-        </div>
+      <div aria-busy="true" aria-label="Loading Google Calendar">
+        <AppLoadingLogo variant="inline" label="Loading Google Calendar" />
       </div>
     )
   }
@@ -198,12 +195,8 @@ export function GoogleScheduleSync({
   return (
     <Suspense
       fallback={
-        <div className="flex gap-3" aria-busy="true" aria-label="Loading">
-          <div className="bg-background/80 ring-border flex size-11 shrink-0 animate-pulse rounded-lg ring-1" />
-          <div className="min-w-0 flex-1 space-y-2">
-            <div className="h-5 max-w-[14rem] animate-pulse rounded-md bg-muted" />
-            <div className="h-3 max-w-[min(100%,20rem)] animate-pulse rounded-md bg-muted/80" />
-          </div>
+        <div aria-busy="true" aria-label="Loading Google Calendar">
+          <AppLoadingLogo variant="inline" label="Loading Google Calendar" />
         </div>
       }
     >

@@ -1,21 +1,15 @@
 import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
-import { Geist_Mono, Public_Sans } from "next/font/google";
+import { Geist_Mono, Public_Sans, IBM_Plex_Sans, Roboto } from "next/font/google";
 
 import "./globals.css";
 import { AppProviders } from "./providers";
 import { cn } from "@/lib/utils";
 
-const publicSans = Public_Sans({
-  subsets: ["latin"],
-  variable: "--font-sans",
-});
+const roboto = Roboto({subsets:['latin'],variable:'--font-sans'});
 
-const fontMono = Geist_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-});
+const geistMono = Geist_Mono({subsets:['latin'],variable:'--font-mono'});
 
 export const metadata: Metadata = {
   title: "Aigenda",
@@ -28,8 +22,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={cn("antialiased", fontMono.variable, "font-sans", publicSans.variable)}>
-      <body>
+    <html lang="en" suppressHydrationWarning className={cn("antialiased", geistMono.variable, "font-sans", roboto.variable)}>
+      {/* suppressHydrationWarning: e.g. Cursor/VS Code injects `vsc-initialized` on <body> before hydrate */}
+      <body suppressHydrationWarning>
         <AppProviders>{children}</AppProviders>
       </body>
     </html>

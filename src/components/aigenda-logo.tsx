@@ -4,6 +4,14 @@ import { cn } from "@/lib/utils"
 
 const GRID_INDICES = [0, 1, 2, 3, 4, 5, 6, 7, 8] as const
 
+/** Slower cycle + smooth cubic-bezier; keyframes use 25/75 stops for gentle fade in/out */
+const loadingAnim = {
+  grid: "animate-[aigenda-logo-grid-cell_4.75s_cubic-bezier(0.42,0,0.2,1)_infinite]",
+  lines: "animate-[aigenda-logo-lines_4.75s_cubic-bezier(0.42,0,0.2,1)_infinite]",
+  dots: "animate-[aigenda-logo-dots_4.75s_cubic-bezier(0.42,0,0.2,1)_infinite]",
+  arch: "animate-[aigenda-logo-arch_4.75s_cubic-bezier(0.42,0,0.2,1)_infinite]",
+} as const
+
 function gridRectProps(i: number) {
   const col = i % 3
   const row = Math.floor(i / 3)
@@ -23,6 +31,11 @@ export type AigendaLogoProps = {
    * `group-hover` on the mark.
    */
   parentGroup?: boolean
+  /**
+   * When true, the mark loops the hover animation (CSS keyframes in globals.css).
+   * Use for loading states; disables pointer cursor and real hover.
+   */
+  loadingPulse?: boolean
 }
 
 /**
@@ -32,15 +45,19 @@ export type AigendaLogoProps = {
 function AigendaLogoMark({
   size,
   parentGroup,
+  loadingPulse = false,
 }: {
   size: number
   parentGroup?: boolean
+  loadingPulse?: boolean
 }) {
   return (
     <div
       className={cn(
-        "relative shrink-0 cursor-pointer text-primary",
-        !parentGroup && "group"
+        "relative shrink-0 text-primary",
+        !loadingPulse && "cursor-pointer",
+        !parentGroup && !loadingPulse && "group",
+        loadingPulse && "pointer-events-none"
       )}
       style={{ width: size, height: size }}
       role="img"
@@ -63,13 +80,27 @@ function AigendaLogoMark({
                 width={22}
                 height={22}
                 rx={2}
-                className="fill-primary/15 transition-all duration-500 group-hover:fill-primary/25"
-                style={{ transitionDelay: `${i * 50}ms` }}
+                className={cn(
+                  loadingPulse
+                    ? `fill-primary motion-reduce:animate-none motion-reduce:opacity-20 ${loadingAnim.grid}`
+                    : "fill-primary/15 transition-all duration-500 group-hover:fill-primary/25"
+                )}
+                style={
+                  loadingPulse
+                    ? { animationDelay: `${i * 72}ms` }
+                    : { transitionDelay: `${i * 50}ms` }
+                }
               />
             )
           })}
 
-          <g className="opacity-40 transition-opacity duration-500 group-hover:opacity-60">
+          <g
+            className={cn(
+              loadingPulse
+                ? `motion-reduce:animate-none motion-reduce:opacity-50 ${loadingAnim.lines}`
+                : "opacity-40 transition-opacity duration-500 group-hover:opacity-60"
+            )}
+          >
             <line
               x1="20"
               y1="20"
@@ -104,7 +135,14 @@ function AigendaLogoMark({
             />
           </g>
 
-          <g className="origin-center transition-transform duration-500 group-hover:scale-110">
+          <g
+            className={cn(
+              "origin-center",
+              loadingPulse
+                ? `motion-reduce:animate-none motion-reduce:scale-100 ${loadingAnim.dots}`
+                : "transition-transform duration-500 group-hover:scale-110"
+            )}
+          >
             <circle cx="20" cy="20" r={4} fill="currentColor" />
             <circle cx="60" cy="20" r={4} fill="currentColor" />
             <circle cx="40" cy="40" r={5} fill="currentColor" />
@@ -112,7 +150,14 @@ function AigendaLogoMark({
             <circle cx="60" cy="60" r={4} fill="currentColor" />
           </g>
 
-          <g className="origin-[40px_40px] transition-transform duration-500 group-hover:scale-[1.02]">
+          <g
+            className={cn(
+              "origin-[40px_40px]",
+              loadingPulse
+                ? `motion-reduce:animate-none motion-reduce:scale-100 ${loadingAnim.arch}`
+                : "transition-transform duration-500 group-hover:scale-[1.02]"
+            )}
+          >
             <path
               d="M 20 65 Q 30 20 40 10"
               stroke="currentColor"
@@ -149,9 +194,14 @@ export function AigendaLogo({
   showTagline = false,
   markOnly = false,
   parentGroup = false,
+  loadingPulse = false,
 }: AigendaLogoProps) {
   const mark = (
-    <AigendaLogoMark size={size} parentGroup={parentGroup} />
+    <AigendaLogoMark
+      size={size}
+      parentGroup={parentGroup}
+      loadingPulse={loadingPulse}
+    />
   )
 
   if (markOnly) {

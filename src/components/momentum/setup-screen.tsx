@@ -6,12 +6,23 @@ import {
   ArrowCounterClockwiseIcon,
   MinusIcon,
   PlusIcon,
+  TrashIcon,
 } from "@phosphor-icons/react";
 import { useMutation, useQuery, useAction, useConvex } from "convex/react";
 import { ConvexError } from "convex/values";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 
+import { AppLoadingLogo } from "@/components/app-loading-logo";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -146,6 +157,9 @@ export function SetupScreen() {
   const [agentPlanning, setAgentPlanning] = useState<AgentPlanningState>({
     kind: "idle",
   });
+  const [clearAllDialogOpen, setClearAllDialogOpen] = useState(false);
+  const [clearAllBusy, setClearAllBusy] = useState(false);
+  const [clearAllError, setClearAllError] = useState<string | null>(null);
 
   const debouncers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -284,6 +298,29 @@ export function SetupScreen() {
     }
   }, [tasks, handleTaskChange]);
 
+  const handleClearAllTasks = useCallback(async () => {
+    if (tasks.length === 0) return;
+    setClearAllError(null);
+    setClearAllBusy(true);
+    const ids = tasks.map((t) => t.id);
+    for (const id of ids) {
+      const pending = debouncers.current.get(id);
+      if (pending) clearTimeout(pending);
+      debouncers.current.delete(id);
+    }
+    try {
+      await Promise.all(
+        ids.map((id) => removeTask({ taskId: id as Id<"tasks"> }))
+      );
+      setTasks([]);
+      setClearAllDialogOpen(false);
+    } catch (e) {
+      setClearAllError(readConvexErrorMessage(e));
+    } finally {
+      setClearAllBusy(false);
+    }
+  }, [tasks, removeTask]);
+
   const handleSaveCanvas = useCallback(async () => {
     setCanvasError(null);
     setCanvas((c) => ({ ...c, status: "syncing" }));
@@ -373,9 +410,7 @@ export function SetupScreen() {
   }, [tasks]);
 
   if (!provisioned || tasksList === undefined || availabilityList === undefined) {
-    return (
-      <div className="text-muted-foreground animate-pulse text-sm">Loading setup…</div>
-    );
+    return <AppLoadingLogo label="Loading setup…" />;
   }
 
   return (
@@ -519,6 +554,20 @@ export function SetupScreen() {
               >
                 {addTaskBusy ? "Adding…" : "Add task"}
               </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                className="gap-1.5"
+                disabled={tasks.length === 0 || clearAllBusy}
+                onClick={() => {
+                  setClearAllError(null);
+                  setClearAllDialogOpen(true);
+                }}
+              >
+                <TrashIcon className="size-4" aria-hidden />
+                Clear all tasks
+              </Button>
             </div>
             {addTaskError ? (
               <p className="text-destructive text-sm" role="alert">
@@ -526,6 +575,43 @@ export function SetupScreen() {
               </p>
             ) : null}
           </div>
+
+          <AlertDialog
+            open={clearAllDialogOpen}
+            onOpenChange={(open) => {
+              setClearAllDialogOpen(open);
+              if (!open) setClearAllError(null);
+            }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Clear all tasks?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This removes every task in the list from your account. Mini tasks
+                  and plan steps tied to those tasks are removed as well. This cannot
+                  be undone.
+                </AlertDialogDescription>
+                {clearAllError ? (
+                  <p className="text-destructive text-sm" role="alert">
+                    {clearAllError}
+                  </p>
+                ) : null}
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel type="button" disabled={clearAllBusy}>
+                  Cancel
+                </AlertDialogCancel>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={clearAllBusy}
+                  onClick={() => void handleClearAllTasks()}
+                >
+                  {clearAllBusy ? "Removing…" : "I understand"}
+                </Button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           <Separator />
 
