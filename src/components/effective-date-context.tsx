@@ -6,6 +6,7 @@ import {
   useContext,
   useMemo,
   useState,
+  useSyncExternalStore,
 } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -18,17 +19,26 @@ const STORAGE_KEY = "momentum_effective_date_override";
 type EffectiveDateContextValue = {
   /** Calendar YYYY-MM-DD: real local today when no override, else the chosen day. */
   effectiveDateIso: string;
+  realTodayIso: string;
   /** When set, Convex `dashboard.get` uses `debugAsOf` and the UI anchors to this day. */
   overrideDateIso: string | null;
   setOverrideDate: (iso: string | null) => void;
   isOverrideActive: boolean;
+  isReady: boolean;
 };
 
 const EffectiveDateContext = createContext<EffectiveDateContextValue | null>(null);
 
 export function EffectiveDateProvider({ children }: { children: React.ReactNode }) {
-  const [overrideDateIso, setOverrideState] = useState<string | null>(() => {
-    if (typeof window === "undefined") {
+  const isReady = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+  const [overrideDateIso, setOverrideState] = useState<string | null | undefined>(undefined);
+
+  const storedOverrideDateIso = useMemo(() => {
+    if (!isReady) {
       return null;
     }
     try {
@@ -40,7 +50,7 @@ export function EffectiveDateProvider({ children }: { children: React.ReactNode 
       /* ignore */
     }
     return null;
-  });
+  }, [isReady]);
 
   const setOverrideDate = useCallback((iso: string | null) => {
     setOverrideState(iso);
@@ -55,16 +65,21 @@ export function EffectiveDateProvider({ children }: { children: React.ReactNode 
     }
   }, []);
 
-  const effectiveDateIso = overrideDateIso ?? localDateIso();
+  const realTodayIso = isReady ? localDateIso() : "";
+  const resolvedOverrideDateIso =
+    overrideDateIso === undefined ? storedOverrideDateIso : overrideDateIso;
+  const effectiveDateIso = resolvedOverrideDateIso ?? realTodayIso;
 
   const value = useMemo<EffectiveDateContextValue>(
     () => ({
       effectiveDateIso,
-      overrideDateIso,
+      realTodayIso,
+      overrideDateIso: resolvedOverrideDateIso,
       setOverrideDate,
-      isOverrideActive: overrideDateIso !== null,
+      isOverrideActive: resolvedOverrideDateIso !== null,
+      isReady,
     }),
-    [effectiveDateIso, overrideDateIso, setOverrideDate]
+    [effectiveDateIso, isReady, realTodayIso, resolvedOverrideDateIso, setOverrideDate]
   );
 
   return (
@@ -82,17 +97,17 @@ export function useEffectiveDate(): EffectiveDateContextValue {
 
 /** Args for `api.dashboard.get` — sends `debugAsOf` when the user chose a simulated day. */
 export function useDashboardConvexArgs(provisioned: boolean) {
-  const { overrideDateIso } = useEffectiveDate();
+  const { isReady, overrideDateIso } = useEffectiveDate();
   return useMemo(() => {
-    if (!provisioned) return "skip" as const;
+    if (!provisioned || !isReady) return "skip" as const;
     if (overrideDateIso !== null) return { debugAsOf: overrideDateIso };
     return {};
-  }, [provisioned, overrideDateIso]);
+  }, [isReady, provisioned, overrideDateIso]);
 }
 
 export function EffectiveDateBar({ className }: { className?: string }) {
-  const { effectiveDateIso, isOverrideActive, setOverrideDate } = useEffectiveDate();
-  const realTodayIso = localDateIso();
+  const { effectiveDateIso, isOverrideActive, isReady, realTodayIso, setOverrideDate } =
+    useEffectiveDate();
 
   return (
     <div
@@ -102,18 +117,29 @@ export function EffectiveDateBar({ className }: { className?: string }) {
       )}
     >
       <span className="text-muted-foreground hidden sm:inline">App date</span>
-      <IsoDatePicker
-        value={effectiveDateIso}
-        onChange={(next) => {
-          if (next === realTodayIso) {
-            setOverrideDate(null);
-          } else {
-            setOverrideDate(next);
-          }
-        }}
-        buttonClassName="h-8 min-w-[11rem] max-w-[11rem] justify-between text-xs"
-        align="end"
-      />
+      {isReady ? (
+        <IsoDatePicker
+          value={effectiveDateIso}
+          onChange={(next) => {
+            if (next === realTodayIso) {
+              setOverrideDate(null);
+            } else {
+              setOverrideDate(next);
+            }
+          }}
+          buttonClassName="h-8 min-w-[11rem] max-w-[11rem] justify-between text-xs"
+          align="end"
+        />
+      ) : (
+        <Button
+          type="button"
+          variant="outline"
+          disabled
+          className="h-8 min-w-[11rem] max-w-[11rem] justify-between text-xs font-normal tabular-nums"
+        >
+          Loading date...
+        </Button>
+      )}
       {isOverrideActive ? (
         <Button
           type="button"

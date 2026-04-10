@@ -45,6 +45,7 @@ import type * as lib_summary from "../lib/summary.js";
 import type * as lib_taskDedupe from "../lib/taskDedupe.js";
 import type * as lib_tokenCrypto from "../lib/tokenCrypto.js";
 import type * as lib_types from "../lib/types.js";
+import type * as overdueAcknowledgments from "../overdueAcknowledgments.js";
 import type * as ping from "../ping.js";
 import type * as plans from "../plans.js";
 import type * as plansInternal from "../plansInternal.js";
@@ -95,6 +96,7 @@ declare const fullApi: ApiFromModules<{
   "lib/taskDedupe": typeof lib_taskDedupe;
   "lib/tokenCrypto": typeof lib_tokenCrypto;
   "lib/types": typeof lib_types;
+  overdueAcknowledgments: typeof overdueAcknowledgments;
   ping: typeof ping;
   plans: typeof plans;
   plansInternal: typeof plansInternal;

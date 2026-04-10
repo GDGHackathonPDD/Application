@@ -116,6 +116,15 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_user_for_date", ["userId", "forDate"]),
 
+  dailyOverdueAcknowledgments: defineTable({
+    userId: v.id("users"),
+    forDate: v.string(),
+    acknowledgedAt: v.number(),
+    yesterdayOverdueCount: v.number(),
+    totalOverdueCount: v.number(),
+    totalOverdueMinutes: v.number(),
+  }).index("by_user_for_date", ["userId", "forDate"]),
+
   canvasIcsSettings: defineTable({
     userId: v.id("users"),
     /** HTTPS Canvas / institution calendar feed (optional if using upload). */

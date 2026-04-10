@@ -9,6 +9,7 @@ import {
   EffectiveDateProvider,
 } from "@/components/effective-date-context";
 import { AppNav } from "@/components/momentum/app-nav";
+import { OverdueWarningGate } from "@/components/momentum/overdue-warning-gate";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function AppLayout({
@@ -19,6 +20,7 @@ export default function AppLayout({
   return (
     <EffectiveDateProvider>
       <div className="flex min-h-svh flex-col">
+        <OverdueWarningGate />
         <header className="border-border bg-background/80 sticky top-0 z-40 border-b backdrop-blur-md">
           <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
             <Link
