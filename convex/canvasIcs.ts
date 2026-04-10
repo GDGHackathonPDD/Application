@@ -11,6 +11,7 @@ import {
   parseICS,
 } from "./lib/canvas/ics";
 import { formatYmdInTimeZone } from "./lib/calendar_dates";
+import { upsertImportedOverallTask } from "./lib/importedTaskUpsert";
 
 const MAX_UPLOADED_ICS_BYTES = 512 * 1024;
 
@@ -57,43 +58,20 @@ export const applyCanvasSync = internalMutation({
   handler: async (ctx, args) => {
     const sourceTag = args.taskSource;
     let upserted = 0;
-    const now = Date.now();
     for (const e of args.events) {
-      const existing = await ctx.db
-        .query("tasks")
-        .withIndex("by_user_external", (q) => q.eq("userId", args.userId).eq("externalUid", e.uid))
-        .unique();
-      if (existing) {
-        await ctx.db.patch(existing._id, {
-          title: e.summary,
-          dueDate: e.dueDate,
-          color: e.color,
-          calendarGroupKey: e.calendarGroupKey,
-          icsSequence: e.icsSequence,
-          planSequence: undefined,
-          updatedAt: now,
-        });
-        upserted++;
-      } else {
-        await ctx.db.insert("tasks", {
-          userId: args.userId,
-          title: e.summary,
-          dueDate: e.dueDate,
-          estimatedHours: 2,
-          priority: "medium",
-          progressPercent: 0,
-          status: "todo",
-          source: sourceTag,
-          externalUid: e.uid,
-          color: e.color,
-          calendarGroupKey: e.calendarGroupKey,
-          icsSequence: e.icsSequence,
-          createdAt: now,
-          updatedAt: now,
-        });
-        upserted++;
-      }
+      await upsertImportedOverallTask(ctx, {
+        userId: args.userId,
+        source: sourceTag,
+        uid: e.uid,
+        summary: e.summary,
+        dueDate: e.dueDate,
+        color: e.color,
+        calendarGroupKey: e.calendarGroupKey,
+        icsSequence: e.icsSequence,
+      });
+      upserted++;
     }
+    const now = Date.now();
     await ctx.db.patch(args.settingsId, {
       lastSyncAt: now,
       lastSyncStatus: `ok: ${upserted} tasks synced`,

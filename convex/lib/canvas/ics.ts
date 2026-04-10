@@ -195,7 +195,10 @@ export function assertCanvasIcsFeedUrlAllowed(feedUrl: string): void {
     throw new Error("ICS feed must use HTTPS");
   }
   const host = url.hostname.toLowerCase();
+  /** Google Calendar “secret address in iCal format” (Option A in setup). */
+  const allowedGoogleCalendar = host === "calendar.google.com";
   const allowedDefault =
+    allowedGoogleCalendar ||
     host === "instructure.com" ||
     host.endsWith(".instructure.com") ||
     host.endsWith(".canvaslms.com");
@@ -203,6 +206,7 @@ export function assertCanvasIcsFeedUrlAllowed(feedUrl: string): void {
   if (!allowedDefault && !allowedExtra) {
     throw new Error(
       "ICS host not allowed. Use your school’s Canvas URL (e.g. *.instructure.com), " +
+        "a Google Calendar secret iCal URL (calendar.google.com), " +
         "or upload an .ics file you want to add to your schedule."
     );
   }
@@ -211,7 +215,7 @@ export function assertCanvasIcsFeedUrlAllowed(feedUrl: string): void {
 export async function fetchAndParseICS(feedUrl: string): Promise<ParsedVEvent[]> {
   assertCanvasIcsFeedUrlAllowed(feedUrl);
   const res = await fetch(feedUrl, {
-    headers: { 'User-Agent': 'MomentumCoach/1.0' },
+    headers: { 'User-Agent': 'Aigenda/1.0' },
     signal: AbortSignal.timeout(15000),
   });
   if (!res.ok) {

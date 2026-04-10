@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 
+import { AppLoadingLogo } from "@/components/app-loading-logo";
 import {
   useDashboardConvexArgs,
   useEffectiveDate,
@@ -19,9 +20,7 @@ function DashboardInner() {
   const dashboard = useQuery(api.dashboard.get, dashboardArgs);
 
   if (!provisioned || dashboard === undefined) {
-    return (
-      <div className="text-muted-foreground animate-pulse text-sm">Loading dashboard…</div>
-    );
+    return <AppLoadingLogo label="Loading dashboard…" />;
   }
 
   const mapped = mapDashboardToMomentum(dashboard, {
@@ -49,11 +48,7 @@ function DashboardInner() {
 
 export default function DashboardPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="text-muted-foreground animate-pulse text-sm">Loading dashboard…</div>
-      }
-    >
+    <Suspense fallback={<AppLoadingLogo label="Loading dashboard…" />}>
       <DashboardInner />
     </Suspense>
   );

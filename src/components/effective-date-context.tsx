@@ -4,7 +4,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -27,18 +26,20 @@ type EffectiveDateContextValue = {
 const EffectiveDateContext = createContext<EffectiveDateContextValue | null>(null);
 
 export function EffectiveDateProvider({ children }: { children: React.ReactNode }) {
-  const [overrideDateIso, setOverrideState] = useState<string | null>(null);
-
-  useEffect(() => {
+  const [overrideDateIso, setOverrideState] = useState<string | null>(() => {
+    if (typeof window === "undefined") {
+      return null;
+    }
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-        setOverrideState(raw);
+        return raw;
       }
     } catch {
       /* ignore */
     }
-  }, []);
+    return null;
+  });
 
   const setOverrideDate = useCallback((iso: string | null) => {
     setOverrideState(iso);

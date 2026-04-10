@@ -3,8 +3,8 @@ import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { getAuthUser } from "./lib/auth";
 import { mapAvailability, mapMiniTask, mapPlan, mapTask } from "./lib/mappers";
+import { recalculateParentProgressFromMinis } from "./lib/parentTaskProgress";
 import type { MiniTask, PlanJson, Task } from "./lib/types";
-import { syncParentProgressFromMiniTasks } from "./lib/parent_task_progress";
 
 const planUpdateReason = v.union(
   v.literal("initial"),
@@ -74,7 +74,9 @@ export const insertPlan = internalMutation({
       createdAt: Date.now(),
     });
 
+    const parentIds = new Set<Id<"tasks">>();
     for (const mt of args.miniTasks) {
+      parentIds.add(mt.parentTaskId);
       await ctx.db.insert("miniTasks", {
         userId: args.userId,
         parentTaskId: mt.parentTaskId,
@@ -88,9 +90,8 @@ export const insertPlan = internalMutation({
       });
     }
 
-    const parentIds = [...new Set(args.miniTasks.map((mt) => mt.parentTaskId))];
     for (const pid of parentIds) {
-      await syncParentProgressFromMiniTasks(ctx, pid);
+      await recalculateParentProgressFromMinis(ctx, pid);
     }
 
     return planId;
@@ -286,7 +287,7 @@ export const deleteIncompleteMinisForParent = internalMutation({
         await ctx.db.delete(r._id);
       }
     }
-    await syncParentProgressFromMiniTasks(ctx, args.parentTaskId);
+    await recalculateParentProgressFromMinis(ctx, args.parentTaskId);
   },
 });
 

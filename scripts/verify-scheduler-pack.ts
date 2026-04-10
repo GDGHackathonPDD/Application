@@ -47,8 +47,10 @@ function task(
     status: "todo",
     color: "#6366f1",
     source: "test",
+    last_source_of_truth: "test",
     external_uid: null,
     scheduled_date: null,
+    merged_key: null,
     created_at: now,
     updated_at: now,
   };

@@ -1,7 +1,7 @@
 "use client"
 
 import { CalendarPlusIcon, DownloadSimpleIcon } from "@phosphor-icons/react"
-import { useCallback } from "react"
+import { useCallback, type ReactNode } from "react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -11,16 +11,23 @@ import {
 import type { OverallTask, UserPlan } from "@/lib/types/momentum"
 import { cn } from "@/lib/utils"
 
+/** Shared width for export + Google sync actions so they align in the panel. */
+export const EXPORT_PANEL_ACTION_CLASS =
+  "w-full shrink-0 justify-center sm:w-64 sm:self-center"
+
 export function IcsExportPanel({
   plan,
   tasksById,
   rangeLabel,
   className,
+  googleSync,
 }: {
   plan: UserPlan
   tasksById: Map<string, OverallTask>
   rangeLabel?: string
   className?: string
+  /** Optional block shown below the .ics download (e.g. Google AiGenda sync). */
+  googleSync?: ReactNode
 }) {
   const label =
     rangeLabel ??
@@ -72,13 +79,17 @@ export function IcsExportPanel({
         <Button
           type="button"
           size="lg"
-          className="shrink-0 sm:self-center"
+          className={EXPORT_PANEL_ACTION_CLASS}
           onClick={handleDownload}
         >
           <DownloadSimpleIcon className="size-5" aria-hidden />
           Download .ics file
         </Button>
       </div>
+
+      {googleSync ? (
+        <div className="border-border mt-4 border-t pt-4">{googleSync}</div>
+      ) : null}
     </section>
   )
 }

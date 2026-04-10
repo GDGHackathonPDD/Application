@@ -1,10 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { UserButton } from "@clerk/nextjs";
 
-import { EffectiveDateBar, EffectiveDateProvider } from "@/components/effective-date-context";
+import { AigendaLogo } from "@/components/aigenda-logo";
+import { UserAccountMenu } from "@/components/auth/user-account-menu";
+import {
+  EffectiveDateBar,
+  EffectiveDateProvider,
+} from "@/components/effective-date-context";
 import { AppNav } from "@/components/momentum/app-nav";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function AppLayout({
   children,
@@ -18,14 +23,21 @@ export default function AppLayout({
           <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
             <Link
               href="/setup"
-              className="text-foreground font-semibold tracking-tight"
+              className="group flex items-center gap-2.5 font-semibold tracking-tight text-foreground"
             >
-              Momentum Coach
+              <AigendaLogo markOnly parentGroup size={36} />
+              <span className="text-lg tracking-tight transition-all duration-300 group-hover:tracking-normal">
+                <span className="text-primary">AI</span>
+                <span className="text-foreground/65 transition-colors duration-300 group-hover:text-foreground">
+                  genda
+                </span>
+              </span>
             </Link>
             <div className="flex flex-wrap items-center justify-end gap-3">
               <EffectiveDateBar />
               <AppNav />
-              <UserButton afterSignOutUrl="/sign-in" />
+              <ThemeToggle />
+              <UserAccountMenu />
             </div>
           </div>
         </header>

@@ -36,6 +36,7 @@ import type {
   UserPlan,
 } from "@/lib/types/momentum"
 
+import { GoogleScheduleSync } from "./google-schedule-sync"
 import { IcsExportPanel } from "./ics-export-panel"
 import { PlanningPeriodControls } from "./planning-period-controls"
 import {
@@ -227,7 +228,7 @@ export function ScheduleScreen({
 
   return (
     <div className="-mx-4 -mt-8 -mb-8 flex h-[calc(100dvh-4.5rem)] flex-col overflow-hidden sm:-mx-6">
-      <div className="bg-background/95 supports-backdrop-filter:backdrop-blur-sm flex shrink-0 items-center gap-2 border-b px-2 py-2 sm:px-3">
+      <div className="bg-background/95 supports-backdrop-filter:backdrop-blur-sm flex shrink-0 items-center gap-3 border-b px-4 py-3.5 sm:px-5 sm:py-4">
         <PlanningPeriodControls
           variant="toolbar"
           preset={preset}
@@ -327,7 +328,12 @@ export function ScheduleScreen({
       ) : null}
 
       <div className="shrink-0 px-2 pt-2 sm:px-3">
-        <IcsExportPanel plan={exportPlan} tasksById={tasksById} rangeLabel={exportRangeLabel} />
+        <IcsExportPanel
+          plan={exportPlan}
+          tasksById={tasksById}
+          rangeLabel={exportRangeLabel}
+          googleSync={<GoogleScheduleSync plan={exportPlan} tasksById={tasksById} />}
+        />
       </div>
 
       <div

@@ -5,6 +5,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
 import { api } from "@convex/_generated/api";
 
+import { AppLoadingLogo } from "@/components/app-loading-logo";
 import { TodayScreen } from "@/components/momentum/today-screen";
 import {
   useDashboardConvexArgs,
@@ -136,9 +137,7 @@ export default function TodayPage() {
   );
 
   if (!provisioned || dashboard === undefined) {
-    return (
-      <div className="text-muted-foreground animate-pulse text-sm">Loading today…</div>
-    );
+    return <AppLoadingLogo label="Loading today…" />;
   }
 
   return (

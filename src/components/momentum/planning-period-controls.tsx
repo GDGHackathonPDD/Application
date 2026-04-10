@@ -1,7 +1,7 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { IsoDatePicker } from "@/components/ui/iso-date-picker"
 import { Label } from "@/components/ui/label"
 import type { PlanningPeriodPreset } from "@/lib/types/momentum"
 import { cn } from "@/lib/utils"
@@ -64,13 +64,12 @@ export function PlanningPeriodControls({
           ))}
         </div>
         {preset === "custom" && (
-          <Input
+          <IsoDatePicker
             id="period-end-toolbar"
-            type="date"
             value={periodEnd}
-            min={periodStart}
-            onChange={(e) => onPeriodEndChange(e.target.value)}
-            className="h-8 w-[9.5rem] shrink-0 text-xs sm:w-36 sm:text-sm"
+            onChange={onPeriodEndChange}
+            disabledBefore={periodStart}
+            buttonClassName="h-8 min-w-[10.5rem] shrink-0 px-2.5 text-xs sm:min-w-[11.5rem] sm:text-sm"
           />
         )}
       </div>
@@ -82,8 +81,7 @@ export function PlanningPeriodControls({
       <div>
         <p className="text-sm font-medium">Planning period</p>
         <p className="text-muted-foreground text-xs">
-          How far ahead manual and automatic recovery plans run.{" "}
-          {labelHint}
+          How far ahead manual and automatic recovery plans run. {labelHint}
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -102,12 +100,12 @@ export function PlanningPeriodControls({
       {preset === "custom" && (
         <div className="grid gap-2 sm:max-w-xs">
           <Label htmlFor="period-end">Plan through (inclusive)</Label>
-          <Input
+          <IsoDatePicker
             id="period-end"
-            type="date"
             value={periodEnd}
-            min={periodStart}
-            onChange={(e) => onPeriodEndChange(e.target.value)}
+            onChange={onPeriodEndChange}
+            disabledBefore={periodStart}
+            buttonClassName="w-full justify-between"
           />
         </div>
       )}

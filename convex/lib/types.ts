@@ -33,9 +33,11 @@ export interface Task {
   status: TaskStatus;
   color: string | null;
   source: string | null;
+  last_source_of_truth: string | null;
   external_uid: string | null;
   /** From ICS sync (`CATEGORIES` or URL); same key → planner keeps one calendar together. */
   calendar_group_key?: string | null;
+  merged_key: string | null;
   scheduled_date: string | null;
   /** Overall tasks: lower = scheduled first. Omitted on legacy rows → planner uses due/priority fallback. */
   plan_sequence?: number | null;

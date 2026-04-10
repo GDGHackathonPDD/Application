@@ -5,6 +5,7 @@ import { useAction, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
 import { api } from "@convex/_generated/api";
 
+import { AppLoadingLogo } from "@/components/app-loading-logo";
 import {
   useDashboardConvexArgs,
   useEffectiveDate,
@@ -98,9 +99,7 @@ function ScheduleInner() {
   }, [generatePlan]);
 
   if (!provisioned || dashboard === undefined) {
-    return (
-      <div className="text-muted-foreground animate-pulse text-sm">Loading schedule…</div>
-    );
+    return <AppLoadingLogo label="Loading schedule…" />;
   }
 
   const mapped = mapDashboardToMomentum(dashboard, {
@@ -123,11 +122,7 @@ function ScheduleInner() {
 
 export default function SchedulePage() {
   return (
-    <Suspense
-      fallback={
-        <div className="text-muted-foreground animate-pulse text-sm">Loading schedule…</div>
-      }
-    >
+    <Suspense fallback={<AppLoadingLogo label="Loading schedule…" />}>
       <ScheduleInner />
     </Suspense>
   );

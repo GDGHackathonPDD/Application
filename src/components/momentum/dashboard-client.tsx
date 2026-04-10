@@ -34,6 +34,7 @@ import {
 import { getVisibleWeekRange } from "@/lib/momentum/week-grid"
 
 import { FeasibilityBanner } from "./feasibility-banner"
+import { GoogleScheduleSync } from "./google-schedule-sync"
 import { IcsExportPanel } from "./ics-export-panel"
 import { PlanUpdateCallout } from "./plan-update-callout"
 import { ScheduleCalendar } from "./schedule-calendar"
@@ -244,6 +245,13 @@ export function DashboardClient({
             plan={weekPlan}
             tasksById={tasksById}
             rangeLabel={weekRangeLabel}
+            googleSync={
+              <GoogleScheduleSync
+                plan={weekPlan}
+                tasksById={tasksById}
+                oauthReturnPath="/dashboard"
+              />
+            }
           />
           <div className="min-h-[min(48vh,26rem)] pb-4 sm:min-h-[min(52vh,32rem)]">
             <ScheduleCalendar

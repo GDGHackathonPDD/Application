@@ -24,6 +24,8 @@ export interface OverallTask {
   progressPercent: number
   color: string
   source?: "canvas" | "manual" | "ics"
+  /** Last import/sync source that updated this task (ICS, Google, manual). */
+  lastSourceOfTruth?: string | null
 }
 
 export interface MiniTask {
