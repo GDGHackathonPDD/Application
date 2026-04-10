@@ -65,8 +65,8 @@ export function TaskFocusPanel({
         <h3 className="mb-4 text-sm font-medium">Mini tasks in this plan</h3>
         {minis.length === 0 ? (
           <p className="text-muted-foreground text-sm">
-            This task isn&apos;t broken down in the current plan yet—regenerate
-            or add availability.
+            No scheduled blocks for this task in the latest plan—try regenerating
+            the plan or adding weekly availability.
           </p>
         ) : (
           <ul className="space-y-3">

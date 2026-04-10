@@ -96,7 +96,6 @@ export function SetupScreen() {
   const saveUploadedIcsMutation = useMutation(api.canvasIcs.saveUploadedIcs);
   const clearUploadedIcsMutation = useMutation(api.canvasIcs.clearUploadedIcs);
   const syncCanvas = useAction(api.canvasIcs.sync);
-  const generatePlan = useAction(api.plans.generate);
 
   const [tasks, setTasks] = useState<OverallTask[]>([]);
   const [availability, setAvailability] = useState<WeeklyAvailability>({
@@ -114,8 +113,9 @@ export function SetupScreen() {
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [canvasError, setCanvasError] = useState<string | null>(null);
-  const [planGenerating, setPlanGenerating] = useState(false);
-  const [planActionError, setPlanActionError] = useState<string | null>(null);
+  const [addTaskBusy, setAddTaskBusy] = useState(false);
+  const [addTaskError, setAddTaskError] = useState<string | null>(null);
+  const agentPlanning = useQuery(api.plans.agentPlanningConfig, provisioned ? {} : "skip");
 
   const debouncers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -175,9 +175,14 @@ export function SetupScreen() {
   const handleAddRow = useCallback(async () => {
     const due = new Date();
     due.setDate(due.getDate() + 7);
-    setPlanActionError(null);
-    setPlanGenerating(true);
+    setAddTaskError(null);
+    setAddTaskBusy(true);
     try {
+      /**
+       * `tasks.create` schedules `plans.mergeNewTaskPlan` (incremental plan + LLM
+       * decomposition for this task only). Do not also call `plans.generate`
+       * here — that full replan races the merge and can insert a second plan.
+       */
       await createTask({
         title: "New task",
         due_date: due.toISOString().slice(0, 10),
@@ -186,13 +191,12 @@ export function SetupScreen() {
         progress_percent: 0,
         color: COLORS[tasks.length % COLORS.length],
       });
-      await generatePlan({ recovery_mode: true });
     } catch (e) {
-      setPlanActionError(readConvexErrorMessage(e));
+      setAddTaskError(readConvexErrorMessage(e));
     } finally {
-      setPlanGenerating(false);
+      setAddTaskBusy(false);
     }
-  }, [createTask, generatePlan, tasks.length]);
+  }, [createTask, tasks.length]);
 
   const handleAvailability = useCallback(
     (next: WeeklyAvailability) => {
@@ -314,6 +318,29 @@ export function SetupScreen() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-8">
+          {agentPlanning && !agentPlanning.agent_api_configured ? (
+            <div
+              className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100"
+              role="status"
+            >
+              LLM step titles need the Agent API from Convex: set{" "}
+              <code className="rounded bg-background/80 px-1 py-0.5 font-mono text-xs">
+                AGENT_API_URL
+              </code>{" "}
+              (and{" "}
+              <code className="rounded bg-background/80 px-1 py-0.5 font-mono text-xs">
+                AGENT_API_KEY
+              </code>{" "}
+              if your Agent API requires it) in the{" "}
+              <strong>Convex dashboard → Settings → Environment Variables</strong>, not
+              only in <code className="font-mono text-xs">.env.local</code>. The Agent API
+              process also needs{" "}
+              <code className="rounded bg-background/80 px-1 py-0.5 font-mono text-xs">
+                OPENROUTER_API_KEY
+              </code>
+              .
+            </div>
+          ) : null}
           <TaskTable
             tasks={tasks}
             errors={submitAttempted ? errors : undefined}
@@ -326,13 +353,13 @@ export function SetupScreen() {
               variant="outline"
               size="sm"
               onClick={handleAddRow}
-              disabled={planGenerating}
+              disabled={addTaskBusy}
             >
-              {planGenerating ? "Decomposing schedule…" : "Add task"}
+              {addTaskBusy ? "Adding…" : "Add task"}
             </Button>
-            {planActionError ? (
+            {addTaskError ? (
               <p className="text-destructive text-sm" role="alert">
-                {planActionError}
+                {addTaskError}
               </p>
             ) : null}
           </div>

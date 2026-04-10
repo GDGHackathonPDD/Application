@@ -1,4 +1,4 @@
-import { action, internalAction } from "./_generated/server";
+import { action, internalAction, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -35,6 +35,18 @@ const periodMode = v.union(
   v.literal("calendar_month"),
   v.literal("date_range")
 );
+
+/**
+ * Whether Convex can call the Agent API for LLM decomposition (Mode B).
+ * Uses deployment env (Convex dashboard / `npx convex env`), not Next.js `.env.local`.
+ */
+export const agentPlanningConfig = query({
+  args: {},
+  handler: async () => {
+    const url = (process.env.AGENT_API_URL ?? "").trim();
+    return { agent_api_configured: url.length > 0 };
+  },
+});
 
 export const generate = action({
   args: {
