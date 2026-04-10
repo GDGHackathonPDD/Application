@@ -8,9 +8,19 @@ import { api } from "@convex/_generated/api";
 import { getAppBaseUrl } from "@/lib/app-url";
 import { verifyOAuthState } from "@/lib/oauth-state";
 
-function redirectToSetupError(baseUrl: string, reason: string) {
+function pathAfterGoogleOAuth(returnTo?: string): string {
+  if (returnTo === "/schedule" || returnTo === "/dashboard") return returnTo;
+  return "/setup";
+}
+
+function redirectToGoogleCalendarError(
+  baseUrl: string,
+  reason: string,
+  returnTo?: string
+) {
+  const path = pathAfterGoogleOAuth(returnTo);
   return NextResponse.redirect(
-    new URL(`/setup?google_calendar=error&reason=${encodeURIComponent(reason)}`, baseUrl)
+    new URL(`${path}?google_calendar=error&reason=${encodeURIComponent(reason)}`, baseUrl)
   );
 }
 
@@ -25,45 +35,48 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const oauthError = searchParams.get("error");
   if (oauthError) {
-    return redirectToSetupError(baseUrl, oauthError);
+    return redirectToGoogleCalendarError(baseUrl, oauthError);
   }
 
   const code = searchParams.get("code");
   const state = searchParams.get("state");
   if (!code || !state) {
-    return redirectToSetupError(baseUrl, "missing_code_or_state");
+    return redirectToGoogleCalendarError(baseUrl, "missing_code_or_state");
   }
 
   const verified = verifyOAuthState(state);
   if (!verified) {
-    return redirectToSetupError(baseUrl, "invalid_state");
+    return redirectToGoogleCalendarError(baseUrl, "invalid_state");
   }
+
+  const successPath = pathAfterGoogleOAuth(verified.returnTo);
 
   const { userId, getToken } = await auth();
   if (!userId) {
     return NextResponse.redirect(new URL("/sign-in", baseUrl));
   }
   if (verified.sub !== userId) {
-    return redirectToSetupError(baseUrl, "state_user_mismatch");
+    return redirectToGoogleCalendarError(baseUrl, "state_user_mismatch", verified.returnTo);
   }
 
   let token: string | null;
   try {
     token = await getToken({ template: "convex" });
   } catch {
-    return redirectToSetupError(
+    return redirectToGoogleCalendarError(
       baseUrl,
-      "clerk_jwt_template_convex_missing"
+      "clerk_jwt_template_convex_missing",
+      verified.returnTo
     );
   }
   if (!token) {
-    return redirectToSetupError(baseUrl, "no_clerk_jwt");
+    return redirectToGoogleCalendarError(baseUrl, "no_clerk_jwt", verified.returnTo);
   }
 
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    return redirectToSetupError(baseUrl, "oauth_not_configured");
+    return redirectToGoogleCalendarError(baseUrl, "oauth_not_configured", verified.returnTo);
   }
 
   const redirectUri = `${baseUrl}/api/google-calendar/callback`;
@@ -74,7 +87,7 @@ export async function GET(request: NextRequest) {
   try {
     const { tokens } = await oauth2Client.getToken(code);
     if (!tokens.refresh_token) {
-      return redirectToSetupError(baseUrl, "no_refresh_token");
+      return redirectToGoogleCalendarError(baseUrl, "no_refresh_token", verified.returnTo);
     }
     refreshToken = tokens.refresh_token;
     oauth2Client.setCredentials(tokens);
@@ -83,7 +96,7 @@ export async function GET(request: NextRequest) {
     connectedEmail = userinfo.email ?? undefined;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return redirectToSetupError(baseUrl, msg.slice(0, 200));
+    return redirectToGoogleCalendarError(baseUrl, msg.slice(0, 200), verified.returnTo);
   }
 
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
@@ -100,8 +113,14 @@ export async function GET(request: NextRequest) {
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return redirectToSetupError(baseUrl, `convex: ${msg.slice(0, 200)}`);
+    return redirectToGoogleCalendarError(
+      baseUrl,
+      `convex: ${msg.slice(0, 200)}`,
+      verified.returnTo
+    );
   }
 
-  return NextResponse.redirect(new URL("/setup?google_calendar=connected", baseUrl));
+  return NextResponse.redirect(
+    new URL(`${successPath}?google_calendar=connected`, baseUrl)
+  );
 }

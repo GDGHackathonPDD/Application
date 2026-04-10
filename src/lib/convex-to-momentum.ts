@@ -28,6 +28,7 @@ export function taskToOverallTask(t: Task): OverallTask {
     priority: t.priority,
     progressPercent: t.progress_percent,
     color: t.color ?? "#6366f1",
+    lastSourceOfTruth: t.last_source_of_truth ?? null,
     source:
       src === "canvas" || src === "canvas_ics"
         ? "canvas"

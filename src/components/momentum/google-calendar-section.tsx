@@ -5,13 +5,25 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { useSearchParams } from "next/navigation";
 import { ConvexError } from "convex/values";
-import { CalendarBlankIcon, ArrowClockwiseIcon } from "@phosphor-icons/react";
+import {
+  ArrowClockwiseIcon,
+  CalendarBlankIcon,
+  CheckCircleIcon,
+  WarningCircleIcon,
+} from "@phosphor-icons/react";
 
 import { api } from "@convex/_generated/api";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import { HelpIconDialog } from "@/components/ui/help-icon-dialog";
 import { useConvexProvisioned } from "@/components/convex-provision-context";
+import {
+  formatCompactSyncTime,
+  formatSyncStatusForDisplay,
+} from "@/lib/momentum/sync-display";
 import { cn } from "@/lib/utils";
+
+import { AiGendaCalendarHelpTrigger } from "./aigenda-calendar-help-trigger";
 
 function formatGoogleOAuthErrorReason(raw: string | null): string {
   if (!raw) return "";
@@ -89,81 +101,142 @@ function GoogleCalendarSectionInner() {
 
   if (!provisioned || status === undefined) {
     return (
-      <div className="text-muted-foreground animate-pulse text-sm">Loading Google Calendar…</div>
+      <div
+        className="relative space-y-4 overflow-hidden rounded-xl border bg-muted/20 p-4"
+        aria-busy="true"
+        aria-label="Loading Google Calendar"
+      >
+        <div
+          className="bg-primary/35 absolute top-0 bottom-0 left-0 w-1"
+          aria-hidden
+        />
+        <div className="h-4 max-w-[12rem] animate-pulse rounded-md bg-muted" />
+        <div className="h-3 max-w-[min(100%,28rem)] animate-pulse rounded-md bg-muted/80" />
+        <div className="h-3 max-w-[min(100%,22rem)] animate-pulse rounded-md bg-muted/60" />
+        <div className="h-8 max-w-[10rem] animate-pulse rounded-md bg-muted" />
+      </div>
     );
   }
 
   const connected = status.connected;
 
+  const syncSummaryParts: string[] = [];
+  if (status.lastSyncAt) {
+    syncSummaryParts.push(`Last sync ${formatCompactSyncTime(status.lastSyncAt)}`);
+  }
+  const statusLine = formatSyncStatusForDisplay(status.lastSyncStatus);
+  if (statusLine) syncSummaryParts.push(statusLine);
+
   return (
-    <div className="space-y-4 rounded-xl border bg-muted/20 p-4">
-      <div>
-        <p className="text-sm font-medium">Google Calendar (API)</p>
-        <p className="text-muted-foreground text-xs">
-          Connect once with Google OAuth. Sync pulls events from your primary calendar into
-          tasks (same as ICS sync). Uses read-only Calendar access; tokens are encrypted in
-          Convex.
-        </p>
+    <div className="relative space-y-4 overflow-hidden rounded-xl border bg-muted/20 p-4">
+      <div className="bg-primary/45 absolute top-0 bottom-0 left-0 w-1" aria-hidden />
+
+      <div className="relative flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <p className="text-sm font-medium">Google Calendar</p>
+            <AiGendaCalendarHelpTrigger />
+          </div>
+          <p className="text-muted-foreground mt-0.5 text-xs">
+            OAuth · AiGenda calendar only · tokens encrypted
+          </p>
+        </div>
+        <HelpIconDialog
+          title="Import without Google API"
+          triggerLabel="ICS import options"
+          description="Use a secret calendar URL instead of OAuth."
+        >
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            Use{" "}
+            <strong className="text-foreground">Calendar import (ICS)</strong> above with a
+            Google secret iCal URL, or read{" "}
+            <Link
+              href="https://support.google.com/calendar/answer/376483"
+              className="text-primary font-medium underline underline-offset-2"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Google&apos;s guide
+            </Link>
+            .
+          </p>
+        </HelpIconDialog>
       </div>
 
       {oauthBanner === "connected" ? (
-        <p className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-200">
-          Google Calendar connected. You can sync below.
-        </p>
+        <Alert
+          className={cn(
+            "border-emerald-500/35 bg-emerald-500/[0.09] py-3 text-emerald-950 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-50",
+            "[&_[data-slot=alert-description]]:text-emerald-900/90 dark:[&_[data-slot=alert-description]]:text-emerald-100/90"
+          )}
+        >
+          <CheckCircleIcon className="text-emerald-600 dark:text-emerald-300" weight="duotone" />
+          <AlertTitle className="text-sm">Connected</AlertTitle>
+          <AlertDescription className="text-xs">You can sync below.</AlertDescription>
+        </Alert>
       ) : null}
       {oauthBanner === "error" ? (
-        <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          Google connection failed
-          {searchParams.get("reason")
-            ? `: ${formatGoogleOAuthErrorReason(searchParams.get("reason"))}`
-            : "."}
-        </p>
+        <Alert variant="destructive" className="py-3">
+          <WarningCircleIcon weight="duotone" />
+          <AlertTitle className="text-sm">Connection failed</AlertTitle>
+          <AlertDescription className="text-xs">
+            {searchParams.get("reason")
+              ? formatGoogleOAuthErrorReason(searchParams.get("reason"))
+              : "Google did not complete authorization. Try Connect again."}
+          </AlertDescription>
+        </Alert>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-2">
-        {!connected ? (
-          <Button type="button" size="sm" asChild>
-            <a href="/api/google-calendar/auth">
-              <CalendarBlankIcon className="mr-1.5 size-4" aria-hidden />
-              Connect Google Calendar
-            </a>
-          </Button>
-        ) : (
-          <>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => void handleSync()}
-              disabled={syncing}
-            >
-              <ArrowClockwiseIcon
-                className={cn("mr-1.5 size-4", syncing && "animate-spin")}
-                aria-hidden
-              />
-              Sync from Google
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div className="flex flex-wrap items-center gap-2">
+          {!connected ? (
+            <Button type="button" size="sm" asChild>
+              <a href="/api/google-calendar/auth?return_to=/setup">
+                <CalendarBlankIcon className="mr-1.5 size-4" aria-hidden />
+                Connect Google Calendar
+              </a>
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => void handleDisconnect()}
-              disabled={syncing}
-            >
-              Disconnect
-            </Button>
-            <span className="text-muted-foreground text-xs">
-              {status.connectedEmail ? (
-                <>Signed in as {status.connectedEmail}</>
-              ) : (
-                <>Connected</>
-              )}
-              {status.lastSyncAt ? (
-                <> · Last sync {new Date(status.lastSyncAt).toLocaleString()}</>
-              ) : null}
-              {status.lastSyncStatus ? <> · {status.lastSyncStatus}</> : null}
-            </span>
-          </>
-        )}
+          ) : (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => void handleSync()}
+                disabled={syncing}
+              >
+                <ArrowClockwiseIcon
+                  className={cn("mr-1.5 size-4", syncing && "animate-spin")}
+                  aria-hidden
+                />
+                Sync from AiGenda
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void handleDisconnect()}
+                disabled={syncing}
+              >
+                Disconnect
+              </Button>
+            </>
+          )}
+        </div>
+        {connected ? (
+          <div className="text-muted-foreground min-w-0 max-w-md space-y-1 text-xs">
+            {status.connectedEmail ? (
+              <p
+                className="text-foreground/90 truncate font-medium"
+                title={status.connectedEmail}
+              >
+                {status.connectedEmail}
+              </p>
+            ) : null}
+            {syncSummaryParts.length > 0 ? (
+              <p className="leading-snug tabular-nums">{syncSummaryParts.join(" · ")}</p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {error ? (
@@ -171,23 +244,6 @@ function GoogleCalendarSectionInner() {
           {error}
         </p>
       ) : null}
-
-      <Separator />
-
-      <p className="text-muted-foreground text-xs">
-        Prefer not to grant API access? Use{" "}
-        <strong className="text-foreground">Calendar import (ICS)</strong> above with your
-        Google Calendar secret iCal URL, or see{" "}
-        <Link
-          href="https://support.google.com/calendar/answer/376483"
-          className="text-primary underline"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Google&apos;s instructions
-        </Link>
-        .
-      </p>
     </div>
   );
 }
@@ -196,7 +252,19 @@ export function GoogleCalendarSection() {
   return (
     <Suspense
       fallback={
-        <div className="text-muted-foreground text-sm">Loading Google Calendar…</div>
+        <div
+          className="relative space-y-4 overflow-hidden rounded-xl border bg-muted/20 p-4"
+          aria-busy="true"
+          aria-label="Loading Google Calendar"
+        >
+          <div
+            className="bg-primary/35 absolute top-0 bottom-0 left-0 w-1"
+            aria-hidden
+          />
+          <div className="h-4 max-w-[12rem] animate-pulse rounded-md bg-muted" />
+          <div className="h-3 max-w-[min(100%,28rem)] animate-pulse rounded-md bg-muted/80" />
+          <div className="h-8 max-w-[10rem] animate-pulse rounded-md bg-muted" />
+        </div>
       }
     >
       <GoogleCalendarSectionInner />

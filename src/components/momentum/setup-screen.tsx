@@ -155,7 +155,10 @@ export function SetupScreen() {
   useEffect(() => {
     if (!tasksList) return;
     setTasks(
-      tasksList.filter((t) => !t.parent_task_id).map(taskToOverallTask)
+      tasksList
+        .filter((t) => !t.parent_task_id)
+        .filter((t) => t.progress_percent < 100)
+        .map(taskToOverallTask)
     );
   }, [tasksList]);
 

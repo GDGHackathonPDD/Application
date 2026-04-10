@@ -34,6 +34,7 @@ import {
 } from "@/lib/momentum/planning-window"
 
 import { FeasibilityBanner } from "./feasibility-banner"
+import { GoogleScheduleSync } from "./google-schedule-sync"
 import { IcsExportPanel } from "./ics-export-panel"
 import { PlanUpdateCallout } from "./plan-update-callout"
 import { ScheduleCalendar } from "./schedule-calendar"
@@ -175,6 +176,13 @@ export function DashboardClient({
             plan={weekPlan}
             tasksById={tasksById}
             rangeLabel={weekRangeLabel}
+            googleSync={
+              <GoogleScheduleSync
+                plan={weekPlan}
+                tasksById={tasksById}
+                oauthReturnPath="/dashboard"
+              />
+            }
           />
           <ScheduleCalendar
             plan={weekPlan}
