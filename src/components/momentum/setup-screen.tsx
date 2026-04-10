@@ -96,6 +96,7 @@ export function SetupScreen() {
   const saveUploadedIcsMutation = useMutation(api.canvasIcs.saveUploadedIcs);
   const clearUploadedIcsMutation = useMutation(api.canvasIcs.clearUploadedIcs);
   const syncCanvas = useAction(api.canvasIcs.sync);
+  const generatePlan = useAction(api.plans.generate);
 
   const [tasks, setTasks] = useState<OverallTask[]>([]);
   const [availability, setAvailability] = useState<WeeklyAvailability>({
@@ -113,6 +114,8 @@ export function SetupScreen() {
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [canvasError, setCanvasError] = useState<string | null>(null);
+  const [planGenerating, setPlanGenerating] = useState(false);
+  const [planActionError, setPlanActionError] = useState<string | null>(null);
 
   const debouncers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -172,15 +175,24 @@ export function SetupScreen() {
   const handleAddRow = useCallback(async () => {
     const due = new Date();
     due.setDate(due.getDate() + 7);
-    await createTask({
-      title: "New task",
-      due_date: due.toISOString().slice(0, 10),
-      estimated_hours: 2,
-      priority: "medium",
-      progress_percent: 0,
-      color: COLORS[tasks.length % COLORS.length],
-    });
-  }, [createTask, tasks.length]);
+    setPlanActionError(null);
+    setPlanGenerating(true);
+    try {
+      await createTask({
+        title: "New task",
+        due_date: due.toISOString().slice(0, 10),
+        estimated_hours: 2,
+        priority: "medium",
+        progress_percent: 0,
+        color: COLORS[tasks.length % COLORS.length],
+      });
+      await generatePlan({ recovery_mode: true });
+    } catch (e) {
+      setPlanActionError(readConvexErrorMessage(e));
+    } finally {
+      setPlanGenerating(false);
+    }
+  }, [createTask, generatePlan, tasks.length]);
 
   const handleAvailability = useCallback(
     (next: WeeklyAvailability) => {
@@ -308,9 +320,22 @@ export function SetupScreen() {
             onChange={handleTaskChange}
             onRemove={handleRemove}
           />
-          <Button type="button" variant="outline" size="sm" onClick={handleAddRow}>
-            Add task
-          </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleAddRow}
+              disabled={planGenerating}
+            >
+              {planGenerating ? "Decomposing schedule…" : "Add task"}
+            </Button>
+            {planActionError ? (
+              <p className="text-destructive text-sm" role="alert">
+                {planActionError}
+              </p>
+            ) : null}
+          </div>
 
           <Separator />
 
