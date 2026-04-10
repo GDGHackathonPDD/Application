@@ -234,17 +234,24 @@ export const remove = mutation({
     const user = await getAuthUser(ctx);
     if (args.taskId) {
       const doc = await ctx.db.get(args.taskId);
-      if (doc && doc.userId === user._id) {
-        await ctx.db.delete(args.taskId);
+      if (!doc) {
         return { success: true as const };
       }
-    } else if (args.miniTaskId) {
-      const doc = await ctx.db.get(args.miniTaskId);
-      if (doc && doc.userId === user._id) {
-        await ctx.db.delete(args.miniTaskId);
-        return { success: true as const };
+      if (doc.userId !== user._id) {
+        throw new ConvexError({ message: "Task not found", code: "NOT_FOUND" });
       }
+      await ctx.db.delete(args.taskId);
+      return { success: true as const };
     }
-    throw new ConvexError({ message: "Task not found", code: "NOT_FOUND" });
+    const miniTaskId = args.miniTaskId!;
+    const miniDoc = await ctx.db.get(miniTaskId);
+    if (!miniDoc) {
+      return { success: true as const };
+    }
+    if (miniDoc.userId !== user._id) {
+      throw new ConvexError({ message: "Task not found", code: "NOT_FOUND" });
+    }
+    await ctx.db.delete(miniTaskId);
+    return { success: true as const };
   },
 });

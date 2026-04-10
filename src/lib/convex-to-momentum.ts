@@ -69,18 +69,23 @@ export function availabilityRowsToWeekly(rows: AvailabilityRow[]): WeeklyAvailab
   return w;
 }
 
+function clampDayHours(h: number): number {
+  if (!Number.isFinite(h)) return 0;
+  return Math.min(24, Math.max(0, h));
+}
+
 export function weeklyAvailabilityToDayEntries(w: WeeklyAvailability): {
   day_of_week: number;
   available_hours: number;
 }[] {
   return [
-    { day_of_week: 0, available_hours: w.sun },
-    { day_of_week: 1, available_hours: w.mon },
-    { day_of_week: 2, available_hours: w.tue },
-    { day_of_week: 3, available_hours: w.wed },
-    { day_of_week: 4, available_hours: w.thu },
-    { day_of_week: 5, available_hours: w.fri },
-    { day_of_week: 6, available_hours: w.sat },
+    { day_of_week: 0, available_hours: clampDayHours(w.sun) },
+    { day_of_week: 1, available_hours: clampDayHours(w.mon) },
+    { day_of_week: 2, available_hours: clampDayHours(w.tue) },
+    { day_of_week: 3, available_hours: clampDayHours(w.wed) },
+    { day_of_week: 4, available_hours: clampDayHours(w.thu) },
+    { day_of_week: 5, available_hours: clampDayHours(w.fri) },
+    { day_of_week: 6, available_hours: clampDayHours(w.sat) },
   ];
 }
 

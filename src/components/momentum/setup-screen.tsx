@@ -165,6 +165,8 @@ export function SetupScreen() {
 
   const handleRemove = useCallback(
     async (id: string) => {
+      const pending = debouncers.current.get(id);
+      if (pending) clearTimeout(pending);
       debouncers.current.delete(id);
       setTasks((prev) => prev.filter((t) => t.id !== id));
       await removeTask({ taskId: id as Id<"tasks"> });
