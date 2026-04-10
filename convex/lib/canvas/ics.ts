@@ -122,7 +122,7 @@ export function assertCanvasIcsFeedUrlAllowed(feedUrl: string): void {
 export async function fetchAndParseICS(feedUrl: string): Promise<ParsedVEvent[]> {
   assertCanvasIcsFeedUrlAllowed(feedUrl);
   const res = await fetch(feedUrl, {
-    headers: { 'User-Agent': 'MomentumCoach/1.0' },
+    headers: { 'User-Agent': 'Aigenda/1.0' },
     signal: AbortSignal.timeout(15000),
   });
   if (!res.ok) {

@@ -13,6 +13,7 @@ import {
 } from "@phosphor-icons/react";
 
 import { api } from "@convex/_generated/api";
+import { AppLoadingLogo } from "@/components/app-loading-logo";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { HelpIconDialog } from "@/components/ui/help-icon-dialog";
@@ -102,7 +103,7 @@ function GoogleCalendarSectionInner() {
   if (!provisioned || status === undefined) {
     return (
       <div
-        className="relative space-y-4 overflow-hidden rounded-xl border bg-muted/20 p-4"
+        className="relative overflow-hidden rounded-xl border bg-muted/20 p-4"
         aria-busy="true"
         aria-label="Loading Google Calendar"
       >
@@ -110,10 +111,7 @@ function GoogleCalendarSectionInner() {
           className="bg-primary/35 absolute top-0 bottom-0 left-0 w-1"
           aria-hidden
         />
-        <div className="h-4 max-w-[12rem] animate-pulse rounded-md bg-muted" />
-        <div className="h-3 max-w-[min(100%,28rem)] animate-pulse rounded-md bg-muted/80" />
-        <div className="h-3 max-w-[min(100%,22rem)] animate-pulse rounded-md bg-muted/60" />
-        <div className="h-8 max-w-[10rem] animate-pulse rounded-md bg-muted" />
+        <AppLoadingLogo variant="section" label="Loading Google Calendar" />
       </div>
     );
   }
@@ -253,7 +251,7 @@ export function GoogleCalendarSection() {
     <Suspense
       fallback={
         <div
-          className="relative space-y-4 overflow-hidden rounded-xl border bg-muted/20 p-4"
+          className="relative overflow-hidden rounded-xl border bg-muted/20 p-4"
           aria-busy="true"
           aria-label="Loading Google Calendar"
         >
@@ -261,9 +259,7 @@ export function GoogleCalendarSection() {
             className="bg-primary/35 absolute top-0 bottom-0 left-0 w-1"
             aria-hidden
           />
-          <div className="h-4 max-w-[12rem] animate-pulse rounded-md bg-muted" />
-          <div className="h-3 max-w-[min(100%,28rem)] animate-pulse rounded-md bg-muted/80" />
-          <div className="h-8 max-w-[10rem] animate-pulse rounded-md bg-muted" />
+          <AppLoadingLogo variant="section" label="Loading Google Calendar" />
         </div>
       }
     >

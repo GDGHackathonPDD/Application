@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 
+import { AppLoadingLogo } from "@/components/app-loading-logo";
 import { TodayScreen } from "@/components/momentum/today-screen";
 import { useConvexProvisioned } from "@/components/convex-provision-context";
 import { convexMiniToUi, mapDashboardToMomentum } from "@/lib/convex-to-momentum";
@@ -33,9 +34,7 @@ export default function TodayPage() {
   }, [dashboard, dateIso]);
 
   if (!provisioned || dashboard === undefined) {
-    return (
-      <div className="text-muted-foreground animate-pulse text-sm">Loading today…</div>
-    );
+    return <AppLoadingLogo label="Loading today…" />;
   }
 
   return (

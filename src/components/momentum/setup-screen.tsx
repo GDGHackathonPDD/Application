@@ -2,11 +2,27 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowCounterClockwiseIcon,
+  MinusIcon,
+  PlusIcon,
+  TrashIcon,
+} from "@phosphor-icons/react";
 import { useMutation, useQuery, useAction, useConvex } from "convex/react";
 import { ConvexError } from "convex/values";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 
+import { AppLoadingLogo } from "@/components/app-loading-logo";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -16,6 +32,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useConvexProvisioned } from "@/components/convex-provision-context";
 import {
@@ -24,6 +42,11 @@ import {
   taskToOverallTask,
   weeklyAvailabilityToDayEntries,
 } from "@/lib/convex-to-momentum";
+import {
+  DEFAULT_BULK_HOURS_STEP,
+  formatBulkHoursStepLabel,
+  normalizeBulkHoursStep,
+} from "@/lib/momentum/bulk-hours-step";
 import type { OverallTask, WeeklyAvailability } from "@/lib/types/momentum";
 
 import { AvailabilityGrid } from "./availability-grid";
@@ -63,6 +86,13 @@ function readConvexErrorMessage(e: unknown): string {
     return m;
   }
   return String(e);
+}
+
+const TASK_ESTIMATED_HOURS_MIN = 0.5;
+
+function adjustTaskEstimatedHours(hours: number, delta: number): number {
+  const raw = Math.round((hours + delta) * 2) / 2;
+  return Math.max(TASK_ESTIMATED_HOURS_MIN, raw);
 }
 
 function patchToConvex(patch: Partial<OverallTask>) {
@@ -121,9 +151,15 @@ export function SetupScreen() {
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [canvasError, setCanvasError] = useState<string | null>(null);
+  const [bulkHoursStep, setBulkHoursStep] = useState(DEFAULT_BULK_HOURS_STEP);
   const [addTaskBusy, setAddTaskBusy] = useState(false);
   const [addTaskError, setAddTaskError] = useState<string | null>(null);
-  const [agentPlanning, setAgentPlanning] = useState<AgentPlanningState>({ kind: "idle" });
+  const [agentPlanning, setAgentPlanning] = useState<AgentPlanningState>({
+    kind: "idle",
+  });
+  const [clearAllDialogOpen, setClearAllDialogOpen] = useState(false);
+  const [clearAllBusy, setClearAllBusy] = useState(false);
+  const [clearAllError, setClearAllError] = useState<string | null>(null);
 
   const debouncers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -244,6 +280,47 @@ export function SetupScreen() {
     [upsertAvailability]
   );
 
+  const handleBulkTaskEstimatedHours = useCallback(
+    (delta: number) => {
+      const step = normalizeBulkHoursStep(bulkHoursStep);
+      for (const t of tasks) {
+        handleTaskChange(t.id, {
+          estimatedHours: adjustTaskEstimatedHours(t.estimatedHours, delta * step),
+        });
+      }
+    },
+    [tasks, handleTaskChange, bulkHoursStep]
+  );
+
+  const handleResetTaskEstimatedHours = useCallback(() => {
+    for (const t of tasks) {
+      handleTaskChange(t.id, { estimatedHours: TASK_ESTIMATED_HOURS_MIN });
+    }
+  }, [tasks, handleTaskChange]);
+
+  const handleClearAllTasks = useCallback(async () => {
+    if (tasks.length === 0) return;
+    setClearAllError(null);
+    setClearAllBusy(true);
+    const ids = tasks.map((t) => t.id);
+    for (const id of ids) {
+      const pending = debouncers.current.get(id);
+      if (pending) clearTimeout(pending);
+      debouncers.current.delete(id);
+    }
+    try {
+      await Promise.all(
+        ids.map((id) => removeTask({ taskId: id as Id<"tasks"> }))
+      );
+      setTasks([]);
+      setClearAllDialogOpen(false);
+    } catch (e) {
+      setClearAllError(readConvexErrorMessage(e));
+    } finally {
+      setClearAllBusy(false);
+    }
+  }, [tasks, removeTask]);
+
   const handleSaveCanvas = useCallback(async () => {
     setCanvasError(null);
     setCanvas((c) => ({ ...c, status: "syncing" }));
@@ -333,9 +410,7 @@ export function SetupScreen() {
   }, [tasks]);
 
   if (!provisioned || tasksList === undefined || availabilityList === undefined) {
-    return (
-      <div className="text-muted-foreground animate-pulse text-sm">Loading setup…</div>
-    );
+    return <AppLoadingLogo label="Loading setup…" />;
   }
 
   return (
@@ -400,22 +475,100 @@ export function SetupScreen() {
               if needed) in the Convex dashboard → Environment Variables.
             </div>
           ) : null}
+          <div className="rounded-lg border bg-muted/20 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-6">
+              <div className="space-y-1.5">
+                <Label htmlFor="bulk-hours-step">
+                  Bulk add/subtract amount (hours)
+                </Label>
+                <Input
+                  id="bulk-hours-step"
+                  type="number"
+                  min={0.5}
+                  max={24}
+                  step={0.5}
+                  value={bulkHoursStep}
+                  onChange={(e) => {
+                    const n = parseFloat(e.target.value);
+                    if (Number.isFinite(n)) {
+                      setBulkHoursStep(normalizeBulkHoursStep(n));
+                    }
+                  }}
+                  className="w-32"
+                />
+              </div>
+              <p className="text-muted-foreground max-w-xl pb-0.5 text-xs sm:flex-1">
+                Used for quick add/subtract on every task&apos;s estimated hours
+                and on every day of weekly availability (0.5–24 h, 0.5 h steps).
+              </p>
+            </div>
+          </div>
           <TaskTable
             tasks={tasks}
             errors={submitAttempted ? errors : undefined}
             onChange={handleTaskChange}
             onRemove={handleRemove}
           />
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleAddRow}
-              disabled={addTaskBusy}
-            >
-              {addTaskBusy ? "Adding…" : "Add task"}
-            </Button>
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="gap-1.5"
+                disabled={tasks.length === 0}
+                onClick={() => handleBulkTaskEstimatedHours(1)}
+              >
+                <PlusIcon className="size-4" aria-hidden />
+                Add {formatBulkHoursStepLabel(bulkHoursStep)} h to each task
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="gap-1.5"
+                disabled={tasks.length === 0}
+                onClick={() => handleBulkTaskEstimatedHours(-1)}
+              >
+                <MinusIcon className="size-4" aria-hidden />
+                Subtract {formatBulkHoursStepLabel(bulkHoursStep)} h from each
+                task
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                disabled={tasks.length === 0}
+                onClick={handleResetTaskEstimatedHours}
+              >
+                <ArrowCounterClockwiseIcon className="size-4" aria-hidden />
+                Reset task estimates
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleAddRow}
+                disabled={addTaskBusy}
+              >
+                {addTaskBusy ? "Adding…" : "Add task"}
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                className="gap-1.5"
+                disabled={tasks.length === 0 || clearAllBusy}
+                onClick={() => {
+                  setClearAllError(null);
+                  setClearAllDialogOpen(true);
+                }}
+              >
+                <TrashIcon className="size-4" aria-hidden />
+                Clear all tasks
+              </Button>
+            </div>
             {addTaskError ? (
               <p className="text-destructive text-sm" role="alert">
                 {addTaskError}
@@ -423,9 +576,50 @@ export function SetupScreen() {
             ) : null}
           </div>
 
+          <AlertDialog
+            open={clearAllDialogOpen}
+            onOpenChange={(open) => {
+              setClearAllDialogOpen(open);
+              if (!open) setClearAllError(null);
+            }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Clear all tasks?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This removes every task in the list from your account. Mini tasks
+                  and plan steps tied to those tasks are removed as well. This cannot
+                  be undone.
+                </AlertDialogDescription>
+                {clearAllError ? (
+                  <p className="text-destructive text-sm" role="alert">
+                    {clearAllError}
+                  </p>
+                ) : null}
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel type="button" disabled={clearAllBusy}>
+                  Cancel
+                </AlertDialogCancel>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={clearAllBusy}
+                  onClick={() => void handleClearAllTasks()}
+                >
+                  {clearAllBusy ? "Removing…" : "I understand"}
+                </Button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
           <Separator />
 
-          <AvailabilityGrid value={availability} onChange={handleAvailability} />
+          <AvailabilityGrid
+            value={availability}
+            onChange={handleAvailability}
+            stepHours={normalizeBulkHoursStep(bulkHoursStep)}
+          />
 
           <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm">
             <span className="text-muted-foreground">Quick check · </span>
