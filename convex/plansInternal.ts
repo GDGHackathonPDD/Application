@@ -127,3 +127,78 @@ export const getPlanRow = internalQuery({
     return mapPlan(plan);
   },
 });
+
+export const getTaskForMerge = internalQuery({
+  args: { taskId: v.id("tasks") },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.taskId);
+    if (!row || row.parentTaskId !== undefined) {
+      return null;
+    }
+    return { userId: row.userId };
+  },
+});
+
+export const getMergeContext = internalQuery({
+  args: { userId: v.id("users"), newTaskId: v.id("tasks") },
+  handler: async (ctx, args) => {
+    const newTask = await ctx.db.get(args.newTaskId);
+    if (!newTask || newTask.userId !== args.userId || newTask.parentTaskId !== undefined) {
+      return null;
+    }
+    const user = await ctx.db.get(args.userId);
+    if (!user) {
+      return null;
+    }
+
+    const [taskDocs, availDocs, latestPlan, miniDocs] = await Promise.all([
+      ctx.db
+        .query("tasks")
+        .withIndex("by_user_due", (q) => q.eq("userId", args.userId))
+        .order("asc")
+        .take(5000),
+      ctx.db
+        .query("availability")
+        .withIndex("by_user_day", (q) => q.eq("userId", args.userId))
+        .order("asc")
+        .take(32),
+      ctx.db
+        .query("plans")
+        .withIndex("by_user_created", (q) => q.eq("userId", args.userId))
+        .order("desc")
+        .first(),
+      ctx.db
+        .query("miniTasks")
+        .withIndex("by_user_scheduled", (q) => q.eq("userId", args.userId))
+        .take(5000),
+    ]);
+
+    return {
+      userId: args.userId,
+      userDefaults: {
+        default_planning_horizon_days: user.defaultPlanningHorizonDays,
+        default_period_mode: user.defaultPeriodMode,
+        max_auto_horizon_days: user.maxAutoHorizonDays ?? null,
+      },
+      tasks: taskDocs.map(mapTask),
+      availability: availDocs.map(mapAvailability),
+      miniTasks: miniDocs.map(mapMiniTask),
+      latestPlanCreatedAt: latestPlan ? new Date(latestPlan.createdAt).toISOString() : null,
+    };
+  },
+});
+
+export const deleteIncompleteMinisForParent = internalMutation({
+  args: { userId: v.id("users"), parentTaskId: v.id("tasks") },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("miniTasks")
+      .withIndex("by_parent_task", (q) => q.eq("parentTaskId", args.parentTaskId))
+      .collect();
+    for (const r of rows) {
+      if (r.userId === args.userId && !r.completed) {
+        await ctx.db.delete(r._id);
+      }
+    }
+  },
+});

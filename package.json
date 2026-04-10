@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "agent-api": "cd ../agent-api && ./.venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.36.5",
@@ -32,6 +33,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
+    "patch-package": "^8.0.1",
     "postcss": "^8",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",
