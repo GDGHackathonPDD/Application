@@ -2,6 +2,11 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowCounterClockwiseIcon,
+  MinusIcon,
+  PlusIcon,
+} from "@phosphor-icons/react";
 import { useMutation, useQuery, useAction } from "convex/react";
 import { ConvexError } from "convex/values";
 import { api } from "@convex/_generated/api";
@@ -16,6 +21,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useConvexProvisioned } from "@/components/convex-provision-context";
 import {
@@ -24,6 +31,11 @@ import {
   taskToOverallTask,
   weeklyAvailabilityToDayEntries,
 } from "@/lib/convex-to-momentum";
+import {
+  DEFAULT_BULK_HOURS_STEP,
+  formatBulkHoursStepLabel,
+  normalizeBulkHoursStep,
+} from "@/lib/momentum/bulk-hours-step";
 import type { OverallTask, WeeklyAvailability } from "@/lib/types/momentum";
 
 import { AvailabilityGrid } from "./availability-grid";
@@ -62,6 +74,13 @@ function readConvexErrorMessage(e: unknown): string {
     return m;
   }
   return String(e);
+}
+
+const TASK_ESTIMATED_HOURS_MIN = 0.5;
+
+function adjustTaskEstimatedHours(hours: number, delta: number): number {
+  const raw = Math.round((hours + delta) * 2) / 2;
+  return Math.max(TASK_ESTIMATED_HOURS_MIN, raw);
 }
 
 function patchToConvex(patch: Partial<OverallTask>) {
@@ -113,6 +132,7 @@ export function SetupScreen() {
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [canvasError, setCanvasError] = useState<string | null>(null);
+  const [bulkHoursStep, setBulkHoursStep] = useState(DEFAULT_BULK_HOURS_STEP);
 
   const debouncers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -189,6 +209,24 @@ export function SetupScreen() {
     },
     [upsertAvailability]
   );
+
+  const handleBulkTaskEstimatedHours = useCallback(
+    (delta: number) => {
+      const step = normalizeBulkHoursStep(bulkHoursStep);
+      for (const t of tasks) {
+        handleTaskChange(t.id, {
+          estimatedHours: adjustTaskEstimatedHours(t.estimatedHours, delta * step),
+        });
+      }
+    },
+    [tasks, handleTaskChange, bulkHoursStep]
+  );
+
+  const handleResetTaskEstimatedHours = useCallback(() => {
+    for (const t of tasks) {
+      handleTaskChange(t.id, { estimatedHours: TASK_ESTIMATED_HOURS_MIN });
+    }
+  }, [tasks, handleTaskChange]);
 
   const handleSaveCanvas = useCallback(async () => {
     setCanvasError(null);
@@ -302,19 +340,88 @@ export function SetupScreen() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-8">
+          <div className="rounded-lg border bg-muted/20 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-6">
+              <div className="space-y-1.5">
+                <Label htmlFor="bulk-hours-step">
+                  Bulk add/subtract amount (hours)
+                </Label>
+                <Input
+                  id="bulk-hours-step"
+                  type="number"
+                  min={0.5}
+                  max={24}
+                  step={0.5}
+                  value={bulkHoursStep}
+                  onChange={(e) => {
+                    const n = parseFloat(e.target.value);
+                    if (Number.isFinite(n)) {
+                      setBulkHoursStep(normalizeBulkHoursStep(n));
+                    }
+                  }}
+                  className="w-32"
+                />
+              </div>
+              <p className="text-muted-foreground max-w-xl pb-0.5 text-xs sm:flex-1">
+                Used for quick add/subtract on every task&apos;s estimated hours
+                and on every day of weekly availability (0.5–24 h, 0.5 h steps).
+              </p>
+            </div>
+          </div>
+
           <TaskTable
             tasks={tasks}
             errors={submitAttempted ? errors : undefined}
             onChange={handleTaskChange}
             onRemove={handleRemove}
           />
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="gap-1.5"
+              disabled={tasks.length === 0}
+              onClick={() => handleBulkTaskEstimatedHours(1)}
+            >
+              <PlusIcon className="size-4" aria-hidden />
+              Add {formatBulkHoursStepLabel(bulkHoursStep)} h to each task
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="gap-1.5"
+              disabled={tasks.length === 0}
+              onClick={() => handleBulkTaskEstimatedHours(-1)}
+            >
+              <MinusIcon className="size-4" aria-hidden />
+              Subtract {formatBulkHoursStepLabel(bulkHoursStep)} h from each
+              task
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              disabled={tasks.length === 0}
+              onClick={handleResetTaskEstimatedHours}
+            >
+              <ArrowCounterClockwiseIcon className="size-4" aria-hidden />
+              Reset task estimates
+            </Button>
+          </div>
           <Button type="button" variant="outline" size="sm" onClick={handleAddRow}>
             Add task
           </Button>
 
           <Separator />
 
-          <AvailabilityGrid value={availability} onChange={handleAvailability} />
+          <AvailabilityGrid
+            value={availability}
+            onChange={handleAvailability}
+            stepHours={normalizeBulkHoursStep(bulkHoursStep)}
+          />
 
           <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm">
             <span className="text-muted-foreground">Quick check · </span>
