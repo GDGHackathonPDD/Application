@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useAction } from "convex/react";
+import { useMutation, useQuery, useAction, useConvex } from "convex/react";
 import { ConvexError } from "convex/values";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -82,7 +82,14 @@ function patchToConvex(patch: Partial<OverallTask>) {
   return p;
 }
 
+type AgentPlanningState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "ok"; agent_api_configured: boolean }
+  | { kind: "unavailable" };
+
 export function SetupScreen() {
+  const convex = useConvex();
   const { provisioned } = useConvexProvisioned();
   const tasksList = useQuery(api.tasks.list, provisioned ? {} : "skip");
   const availabilityList = useQuery(api.availability.list, provisioned ? {} : "skip");
@@ -115,9 +122,34 @@ export function SetupScreen() {
   const [canvasError, setCanvasError] = useState<string | null>(null);
   const [addTaskBusy, setAddTaskBusy] = useState(false);
   const [addTaskError, setAddTaskError] = useState<string | null>(null);
-  const agentPlanning = useQuery(api.plans.agentPlanningConfig, provisioned ? {} : "skip");
+  const [agentPlanning, setAgentPlanning] = useState<AgentPlanningState>({ kind: "idle" });
 
   const debouncers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  useEffect(() => {
+    if (!provisioned || !convex) {
+      setAgentPlanning({ kind: "idle" });
+      return;
+    }
+    let cancelled = false;
+    setAgentPlanning({ kind: "loading" });
+    convex
+      .query(api.plans.agentPlanningConfig, {})
+      .then((r) => {
+        if (!cancelled) {
+          setAgentPlanning({ kind: "ok", agent_api_configured: r.agent_api_configured });
+        }
+      })
+      .catch((err) => {
+        console.warn("[SetupScreen] agentPlanningConfig failed:", err);
+        if (!cancelled) {
+          setAgentPlanning({ kind: "unavailable" });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [provisioned, convex]);
 
   useEffect(() => {
     if (!tasksList) return;
@@ -320,7 +352,7 @@ export function SetupScreen() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-8">
-          {agentPlanning && !agentPlanning.agent_api_configured ? (
+          {agentPlanning.kind === "ok" && !agentPlanning.agent_api_configured ? (
             <div
               className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100"
               role="status"
@@ -341,6 +373,27 @@ export function SetupScreen() {
                 OPENROUTER_API_KEY
               </code>
               .
+            </div>
+          ) : null}
+          {agentPlanning.kind === "unavailable" ? (
+            <div
+              className="rounded-lg border border-muted-foreground/25 bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+              role="status"
+            >
+              Could not load planning configuration from Convex. If this is production,
+              deploy the latest backend:{" "}
+              <code className="rounded bg-background/80 px-1 py-0.5 font-mono text-xs">
+                cd Application && npx convex deploy
+              </code>
+              , then set{" "}
+              <code className="rounded bg-background/80 px-1 py-0.5 font-mono text-xs">
+                AGENT_API_URL
+              </code>{" "}
+              (and{" "}
+              <code className="rounded bg-background/80 px-1 py-0.5 font-mono text-xs">
+                AGENT_API_KEY
+              </code>{" "}
+              if needed) in the Convex dashboard → Environment Variables.
             </div>
           ) : null}
           <TaskTable
