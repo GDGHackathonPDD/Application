@@ -112,4 +112,14 @@ export default defineSchema({
     lastSyncAt: v.optional(v.number()),
     lastSyncStatus: v.optional(v.string()),
   }).index("by_user", ["userId"]),
+
+  /** Google Calendar API OAuth (refresh token encrypted with GOOGLE_OAUTH_ENCRYPTION_KEY). */
+  googleCalendarSettings: defineTable({
+    userId: v.id("users"),
+    encryptedRefreshToken: v.string(),
+    connectedEmail: v.optional(v.string()),
+    connectedAt: v.number(),
+    lastSyncAt: v.optional(v.number()),
+    lastSyncStatus: v.optional(v.string()),
+  }).index("by_user", ["userId"]),
 });

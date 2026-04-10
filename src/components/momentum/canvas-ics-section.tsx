@@ -52,7 +52,17 @@ export function CanvasIcsSection({
         </Label>
         <p className="text-muted-foreground text-xs">
           Private HTTPS URL from Canvas → Calendar → Calendar feed (typically{" "}
-          <code className="text-xs">*.instructure.com</code>). Saving a URL clears a
+          <code className="text-xs">*.instructure.com</code>), or paste your Google Calendar
+          secret iCal address from{" "}
+          <a
+            href="https://calendar.google.com/calendar/u/0/r/settings"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary underline"
+          >
+            Google Calendar settings
+          </a>{" "}
+          (Integrate calendar → Secret address in iCal format). Saving a URL clears a
           previously uploaded file.
         </p>
         <div className="space-y-1.5">

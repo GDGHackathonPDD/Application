@@ -28,6 +28,7 @@ import type { OverallTask, WeeklyAvailability } from "@/lib/types/momentum";
 
 import { AvailabilityGrid } from "./availability-grid";
 import { CanvasIcsSection } from "./canvas-ics-section";
+import { GoogleCalendarSection } from "./google-calendar-section";
 import { type TaskRowErrors, TaskTable } from "./task-table";
 
 const COLORS = ["#6366f1", "#0ea5e9", "#22c55e", "#f59e0b", "#ec4899"];
@@ -446,6 +447,10 @@ export function SetupScreen() {
             syncDisabled={syncDisabled}
             syncDisabledReason={syncDisabledReason}
           />
+
+          <Separator />
+
+          <GoogleCalendarSection />
         </CardContent>
         <CardFooter className="flex flex-wrap gap-2">
           <Button
