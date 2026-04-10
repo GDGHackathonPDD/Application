@@ -25,7 +25,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     <ClerkProvider appearance={clerkAppearance}>
       <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
         <ConvexProvisionProvider>
-          <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+          <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
             {children}
           </ThemeProvider>
         </ConvexProvisionProvider>

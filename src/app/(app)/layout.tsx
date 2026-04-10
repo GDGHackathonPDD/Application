@@ -4,6 +4,7 @@ import Link from "next/link";
 import { AigendaLogo } from "@/components/aigenda-logo";
 import { UserAccountMenu } from "@/components/auth/user-account-menu";
 import { AppNav } from "@/components/momentum/app-nav";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function AppLayout({
   children,
@@ -28,6 +29,7 @@ export default function AppLayout({
           </Link>
           <div className="flex flex-wrap items-center justify-end gap-3">
             <AppNav />
+            <ThemeToggle />
             <UserAccountMenu />
           </div>
         </div>
