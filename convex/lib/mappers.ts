@@ -45,7 +45,10 @@ export function mapTask(doc: Doc<"tasks">): Task {
     color: doc.color ?? null,
     source: doc.source ?? null,
     external_uid: doc.externalUid ?? null,
+    calendar_group_key: doc.calendarGroupKey ?? null,
     scheduled_date: doc.scheduledDate ?? null,
+    plan_sequence: doc.planSequence ?? null,
+    ics_sequence: doc.icsSequence ?? null,
     created_at: iso(doc.createdAt),
     updated_at: iso(doc.updatedAt),
   };
@@ -63,6 +66,7 @@ export function mapMiniTask(doc: Doc<"miniTasks">): MiniTask {
     tier: doc.tier,
     completed: doc.completed,
     completed_at: doc.completedAt != null ? iso(doc.completedAt) : null,
+    plan_order: doc.planOrder,
   };
 }
 

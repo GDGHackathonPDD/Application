@@ -3,6 +3,9 @@ import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import { getAuthUser } from "./lib/auth";
 import { mapMiniTask, mapTask } from "./lib/mappers";
+import { PLAN_BLOCK_MINUTES_MAX } from "./lib/config";
+import { nextPlanSequence } from "./lib/plan_sequence";
+import { syncParentProgressFromMiniTasks } from "./lib/parent_task_progress";
 
 const priority = v.union(v.literal("low"), v.literal("medium"), v.literal("high"));
 const taskStatus = v.union(v.literal("todo"), v.literal("in_progress"), v.literal("done"));
@@ -56,8 +59,11 @@ export const create = mutation({
 
     if (args.parent_task_id) {
       assertDate("scheduled_date", args.scheduled_date);
-      if (args.minutes == null || args.minutes < 5 || args.minutes > 120) {
-        throw new ConvexError({ message: "minutes is required (5–120) for mini tasks", code: "INVALID_MINUTES" });
+      if (args.minutes == null || args.minutes < 5 || args.minutes > PLAN_BLOCK_MINUTES_MAX) {
+        throw new ConvexError({
+          message: `minutes is required (5–${PLAN_BLOCK_MINUTES_MAX}) for mini tasks`,
+          code: "INVALID_MINUTES",
+        });
       }
       if (!args.tier) {
         throw new ConvexError({ message: "tier is required for mini tasks", code: "INVALID_TIER" });
@@ -81,6 +87,7 @@ export const create = mutation({
       });
       const doc = await ctx.db.get(id);
       if (!doc) throw new ConvexError({ message: "Insert failed", code: "INSERT_FAILED" });
+      await syncParentProgressFromMiniTasks(ctx, args.parent_task_id);
       return { success: true as const, data: mapMiniTask(doc), kind: "mini" as const };
     }
 
@@ -93,6 +100,7 @@ export const create = mutation({
     }
 
     const now = Date.now();
+    const planSequence = await nextPlanSequence(ctx, user._id);
     const id = await ctx.db.insert("tasks", {
       userId: user._id,
       title,
@@ -104,6 +112,7 @@ export const create = mutation({
       color: args.color,
       source: args.source,
       externalUid: args.external_uid,
+      planSequence,
       createdAt: now,
       updatedAt: now,
     });
@@ -122,6 +131,8 @@ const updateFields = v.object({
   progress_percent: v.optional(v.number()),
   status: v.optional(taskStatus),
   color: v.optional(v.union(v.string(), v.null())),
+  /** Overall task only: lower = scheduled first in planner. */
+  plan_sequence: v.optional(v.number()),
   scheduled_date: v.optional(v.string()),
   minutes: v.optional(v.number()),
   tier: v.optional(tier),
@@ -156,6 +167,7 @@ export const update = mutation({
         progressPercent?: number;
         status?: "todo" | "in_progress" | "done";
         color?: string;
+        planSequence?: number;
         updatedAt: number;
       } = { updatedAt: Date.now() };
       if (p.title !== undefined) overallPatch.title = p.title.trim();
@@ -168,6 +180,7 @@ export const update = mutation({
       if (p.progress_percent !== undefined) overallPatch.progressPercent = p.progress_percent;
       if (p.status !== undefined) overallPatch.status = p.status;
       if (p.color !== undefined) overallPatch.color = p.color === null ? undefined : p.color;
+      if (p.plan_sequence !== undefined) overallPatch.planSequence = p.plan_sequence;
 
       const hasOverallKeys =
         p.title !== undefined ||
@@ -176,7 +189,8 @@ export const update = mutation({
         p.priority !== undefined ||
         p.progress_percent !== undefined ||
         p.status !== undefined ||
-        p.color !== undefined;
+        p.color !== undefined ||
+        p.plan_sequence !== undefined;
 
       if (hasOverallKeys) {
         await ctx.db.patch(args.taskId, overallPatch);
@@ -212,7 +226,10 @@ export const update = mutation({
       if (Object.keys(miniPatch).length > 0) {
         await ctx.db.patch(args.miniTaskId, miniPatch);
         const doc = await ctx.db.get(args.miniTaskId);
-        if (doc) return { success: true as const, data: mapMiniTask(doc), kind: "mini" as const };
+        if (doc) {
+          await syncParentProgressFromMiniTasks(ctx, doc.parentTaskId);
+          return { success: true as const, data: mapMiniTask(doc), kind: "mini" as const };
+        }
       }
     }
 
@@ -266,7 +283,9 @@ export const remove = mutation({
     if (miniDoc.userId !== user._id) {
       throw new ConvexError({ message: "Task not found", code: "NOT_FOUND" });
     }
+    const parentId = miniDoc.parentTaskId;
     await ctx.db.delete(miniTaskId);
+    await syncParentProgressFromMiniTasks(ctx, parentId);
     return { success: true as const };
   },
 });

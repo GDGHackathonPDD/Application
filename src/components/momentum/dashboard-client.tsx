@@ -37,7 +37,7 @@ import { FeasibilityBanner } from "./feasibility-banner"
 import { IcsExportPanel } from "./ics-export-panel"
 import { PlanUpdateCallout } from "./plan-update-callout"
 import { ScheduleCalendar } from "./schedule-calendar"
-import { StatusBadge } from "./status-badge"
+import { DriftStatusBadges, StatusBadge } from "./status-badge"
 import { TaskFocusPanel } from "./task-focus-panel"
 
 export function DashboardClient({
@@ -47,6 +47,7 @@ export function DashboardClient({
   initialMinisByParent,
   weekAnchor = new Date(),
   weeklyAvailability = MOCK_AVAILABILITY,
+  drift,
 }: {
   tasks: OverallTask[]
   plan: UserPlan
@@ -55,6 +56,12 @@ export function DashboardClient({
   /** Calendar “today” / week window anchor */
   weekAnchor?: Date
   weeklyAvailability?: WeeklyAvailability
+  /** When set, extra badges (e.g. falling behind) stack next to feasibility. */
+  drift?: {
+    fallingBehind: boolean
+    fallingBehindWork: boolean
+    atRisk: boolean
+  }
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -123,6 +130,13 @@ export function DashboardClient({
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-semibold tracking-tight">Recovery</h1>
             <StatusBadge status={feasibility.status} />
+            {drift ? (
+              <DriftStatusBadges
+                fallingBehind={drift.fallingBehind}
+                fallingBehindWork={drift.fallingBehindWork}
+                atRisk={drift.atRisk}
+              />
+            ) : null}
           </div>
           <p className="text-muted-foreground max-w-2xl text-sm">
             {feasibility.headline}

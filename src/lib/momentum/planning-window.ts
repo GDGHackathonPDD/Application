@@ -126,7 +126,12 @@ export function buildCalendarPlanForWindow(
 
   const byDate = new Map(
     plan.days.map((d) => {
-      const blocks = d.blocks.filter((b) => validParentIds.has(b.parentTaskId))
+      const blocks = d.blocks
+        .filter((b) => validParentIds.has(b.parentTaskId))
+        .sort((a, b) => {
+          if (a.parentTaskId !== b.parentTaskId) return a.parentTaskId.localeCompare(b.parentTaskId);
+          return (a.planOrder ?? 0) - (b.planOrder ?? 0);
+        })
       const scheduledMinutes = blocks.reduce((s, b) => s + b.minutes, 0)
       return [d.date, { ...d, blocks, scheduledMinutes }] as const
     })

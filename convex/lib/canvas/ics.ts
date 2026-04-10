@@ -4,6 +4,83 @@ interface ParsedVEvent {
   dtstart?: string;
   dtend?: string;
   due?: string;
+  /** First `CATEGORIES` value, else URL-derived key — from the .ics only. */
+  calendarGroupKey?: string;
+  /** RFC 5545 SEQUENCE; lower = earlier revision / intended order. */
+  icsSequence?: number;
+}
+
+/** Internal while scanning one VEVENT. */
+interface BuildingVEvent {
+  uid?: string;
+  summary?: string;
+  dtstart?: string;
+  dtend?: string;
+  due?: string;
+  categoriesKey?: string;
+  urlGroupKey?: string;
+  icsSequence?: number;
+}
+
+function isAllDigits(s: string): boolean {
+  if (s.length === 0) return false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 48 || c > 57) return false;
+  }
+  return true;
+}
+
+/** Many LMS calendar URLs use `/courses/<id>/…` — optional fallback when `CATEGORIES` is absent. */
+export function calendarGroupKeyFromEventUrl(urlStr: string): string | null {
+  try {
+    const u = new URL(urlStr);
+    const segs = u.pathname.split("/").filter((s) => s.length > 0);
+    const idx = segs.indexOf("courses");
+    if (idx < 0 || idx >= segs.length - 1) return null;
+    const id = segs[idx + 1];
+    return id !== undefined && isAllDigits(id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractHttpUrlFromIcsLine(line: string): string | null {
+  let start = line.indexOf("https://");
+  if (start < 0) start = line.indexOf("http://");
+  if (start < 0) return null;
+  let end = line.length;
+  for (let j = start; j < line.length; j++) {
+    const ch = line[j];
+    if (ch === " " || ch === "\r" || ch === "\n" || ch === "\t") {
+      end = j;
+      break;
+    }
+  }
+  return line.slice(start, end);
+}
+
+function firstCategoryFromCategoriesLine(line: string): string | null {
+  const colonIdx = line.indexOf(":");
+  if (colonIdx === -1) return null;
+  const raw = line.slice(colonIdx + 1).trim();
+  if (raw.length === 0) return null;
+  const first = raw.split(",")[0].trim();
+  return first.length > 0 ? first : null;
+}
+
+function finalizeParsedEvent(b: BuildingVEvent): ParsedVEvent | null {
+  if (!b.uid || !b.summary) return null;
+  const calendarGroupKey = b.categoriesKey ?? b.urlGroupKey;
+  return {
+    uid: b.uid,
+    summary: b.summary,
+    dtstart: b.dtstart,
+    dtend: b.dtend,
+    due: b.due,
+    ...(calendarGroupKey ? { calendarGroupKey } : {}),
+    ...(b.icsSequence !== undefined ? { icsSequence: b.icsSequence } : {}),
+  };
 }
 
 /** Parse ICS text into VEVENT summaries (UID + SUMMARY + optional dates). */
@@ -11,7 +88,7 @@ export function parseICS(text: string): ParsedVEvent[] {
   const events: ParsedVEvent[] = [];
   const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
   let inEvent = false;
-  let current: Partial<ParsedVEvent> = {};
+  let current: BuildingVEvent = {};
 
   for (const rawLine of lines) {
     const line = rawLine.trim();
@@ -22,23 +99,39 @@ export function parseICS(text: string): ParsedVEvent[] {
     }
     if (line === 'END:VEVENT') {
       inEvent = false;
-      if (current.uid && current.summary) {
-        events.push(current as ParsedVEvent);
-      }
+      const done = finalizeParsedEvent(current);
+      if (done) events.push(done);
       continue;
     }
     if (!inEvent) continue;
 
-    if (line.startsWith('UID:')) {
-      current.uid = line.slice(4).trim();
-    } else if (line.startsWith('SUMMARY:')) {
-      current.summary = line.slice(8).trim();
+    if (line.startsWith('UID')) {
+      const colonIdx = line.indexOf(':');
+      if (colonIdx >= 0) current.uid = line.slice(colonIdx + 1).trim();
+    } else if (line.startsWith('SUMMARY')) {
+      const colonIdx = line.indexOf(':');
+      if (colonIdx >= 0) current.summary = line.slice(colonIdx + 1).trim();
     } else if (line.startsWith('DTSTART') || line.startsWith('DTSTART;')) {
       current.dtstart = extractICSDate(line);
     } else if (line.startsWith('DUE') || line.startsWith('DUE;')) {
       current.due = extractICSDate(line);
     } else if (line.startsWith('DTEND') || line.startsWith('DTEND;')) {
       current.dtend = extractICSDate(line);
+    } else if (line.startsWith('CATEGORIES')) {
+      const cat = firstCategoryFromCategoriesLine(line);
+      if (cat) current.categoriesKey = cat;
+    } else if (line.startsWith('URL') || line.startsWith('URL;')) {
+      const href = extractHttpUrlFromIcsLine(line);
+      if (href) {
+        const key = calendarGroupKeyFromEventUrl(href);
+        if (key) current.urlGroupKey = key;
+      }
+    } else if (line.startsWith('SEQUENCE')) {
+      const colonIdx = line.indexOf(':');
+      if (colonIdx >= 0) {
+        const n = parseInt(line.slice(colonIdx + 1).trim(), 10);
+        if (!Number.isNaN(n)) current.icsSequence = n;
+      }
     }
   }
 

@@ -60,7 +60,7 @@ export function ScheduleScreen({
   scheduleAnchor?: Date
   weeklyAvailability?: WeeklyAvailability
   /** Full replan: segmentation agent (`/decompose`) then deterministic scheduler (Convex). */
-  onGeneratePlan?: () => void | Promise<void>
+  onGeneratePlan?: (args: { periodStart: string; periodEnd: string; preset: PlanningPeriodPreset }) => void | Promise<void>
   generateBusy?: boolean
   generateError?: string | null
 }) {
@@ -248,7 +248,13 @@ export function ScheduleScreen({
               className="text-xs sm:text-sm"
               data-testid="schedule-generate-plan"
               disabled={generateBusy}
-              onClick={() => void onGeneratePlan()}
+              onClick={() =>
+                void onGeneratePlan({
+                  periodStart: range.periodStart,
+                  periodEnd: range.periodEnd,
+                  preset,
+                })
+              }
             >
               {generateBusy ? "Planning…" : "Generate plan"}
             </Button>

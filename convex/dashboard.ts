@@ -1,4 +1,8 @@
+import { v } from "convex/values";
+
 import { query } from "./_generated/server";
+import { addCalendarDaysYmd, dateForUserCalendarDay } from "./lib/calendar_dates";
+import { DRIFT_CONFIG } from "./lib/config";
 import { getAuthUser } from "./lib/auth";
 import { computeDrift } from "./lib/drift";
 import { computeFeasibilityPayload } from "./lib/feasibility";
@@ -6,10 +10,18 @@ import { resolvePlanningPeriod } from "./lib/plan/period";
 import { mapAvailability, mapDailySummary, mapMiniTask, mapPlan, mapTask } from "./lib/mappers";
 import type { Plan } from "./lib/types";
 
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 export const get = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { debugAsOf: v.optional(v.string()) },
+  handler: async (ctx, args) => {
     const user = await getAuthUser(ctx);
+
+    const debugAsOf =
+      args.debugAsOf && YMD_RE.test(args.debugAsOf) ? args.debugAsOf : undefined;
+    const asOfDate = debugAsOf
+      ? dateForUserCalendarDay(user.timezone, debugAsOf)
+      : new Date();
 
     const [taskDocs, availDocs, latestPlan] = await Promise.all([
       ctx.db
@@ -41,13 +53,16 @@ export const get = query({
         max_auto_horizon_days: user.maxAutoHorizonDays ?? null,
       },
       horizonFromDefaultsOnly: true,
+      userTimeZone: user.timezone,
+      today: asOfDate,
     });
 
     const feasibilityPayload = computeFeasibilityPayload(
       tasks,
       availability,
       period.period_start,
-      period.period_end
+      period.period_end,
+      user.timezone
     );
 
     let miniTasks: ReturnType<typeof mapMiniTask>[] = [];
@@ -61,13 +76,22 @@ export const get = query({
         .map(mapMiniTask);
     }
 
-    const incompleteBlocks = miniTasks.filter((m) => !m.completed).length;
+    const slipStart = period.period_start;
+    const slipEnd = addCalendarDaysYmd(slipStart, DRIFT_CONFIG.slippageWindowDays - 1);
+    const incompleteBlocks = miniTasks.filter(
+      (m) =>
+        !m.completed &&
+        m.scheduled_date >= slipStart &&
+        m.scheduled_date <= slipEnd
+    ).length;
     const overallTasks = tasks.filter((t) => !t.parent_task_id);
     const stalledTasks = overallTasks.filter(
-      (t) => t.progress_percent === 0 && new Date(t.due_date) < new Date()
+      (t) => t.progress_percent === 0 && new Date(t.due_date) < asOfDate
     );
     const overdueNow = overallTasks.filter(
-      (t) => new Date(t.due_date) < new Date() && t.estimated_hours * (1 - t.progress_percent / 100) > 0
+      (t) =>
+        new Date(t.due_date) < asOfDate &&
+        t.estimated_hours * (1 - t.progress_percent / 100) > 0
     ).length;
 
     const driftResult = computeDrift({
@@ -77,12 +101,12 @@ export const get = query({
       stalledTaskIds: stalledTasks.map((t) => t.id),
       overdueDelta: overdueNow,
       planCreatedAt: plan?.created_at ?? null,
-      now: new Date(),
+      now: asOfDate,
       remainingHoursDelta: feasibilityPayload.feasibility.shortfall_claimed_hours,
       mustDoStreakMiss: 0,
     });
 
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = debugAsOf ?? new Date().toISOString().slice(0, 10);
     const summaryDoc = await ctx.db
       .query("dailySummaries")
       .withIndex("by_user_for_date", (q) => q.eq("userId", user._id).eq("forDate", todayStr))

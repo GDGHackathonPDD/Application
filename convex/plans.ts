@@ -6,6 +6,7 @@ import { ApiError } from "./lib/errors";
 import { computeDrift } from "./lib/drift";
 import { computeFeasibilityPayload } from "./lib/feasibility";
 import { generatePlan, incrementalMergeNewTask } from "./lib/plan/generate";
+import { formatYmd, parseYmd } from "./lib/calendar_dates";
 import { resolvePlanningPeriod } from "./lib/plan/period";
 import type {
   AvailabilityRow,
@@ -19,6 +20,7 @@ import type {
 
 type GenerationContext = {
   userId: Id<"users">;
+  userTimezone: string;
   userDefaults: {
     default_planning_horizon_days: number;
     default_period_mode: PeriodMode;
@@ -31,6 +33,33 @@ type GenerationContext = {
   latestPlanCreatedAt: string | null;
 };
 
+function latestDueDateWithRemaining(tasks: Task[]): string | null {
+  let latest: string | null = null;
+  for (const task of tasks) {
+    if (task.parent_task_id) continue;
+    const remaining = task.estimated_hours * (1 - task.progress_percent / 100);
+    if (remaining <= 0) continue;
+    if (latest == null || task.due_date > latest) latest = task.due_date;
+  }
+  return latest;
+}
+
+function widenPeriodEndToRemainingDueDates(
+  period: { period_start: string; period_end: string; horizon_days: number },
+  tasks: Task[]
+): { period_start: string; period_end: string; horizon_days: number } {
+  const latestDue = latestDueDateWithRemaining(tasks);
+  if (!latestDue || latestDue <= period.period_end) return period;
+  const start = parseYmd(period.period_start);
+  const end = parseYmd(latestDue);
+  const horizonDays = Math.ceil((end.getTime() - start.getTime()) / 86400000) + 1;
+  return {
+    period_start: period.period_start,
+    period_end: formatYmd(end),
+    horizon_days: horizonDays,
+  };
+}
+
 function miniTasksInsertPayloadFromPlanDays(
   days: Record<string, { blocks: PlanBlock[] }>
 ): Array<{
@@ -39,6 +68,7 @@ function miniTasksInsertPayloadFromPlanDays(
   scheduledDate: string;
   minutes: number;
   tier: PlanBlock["tier"];
+  planOrder?: number;
 }> {
   const out: Array<{
     parentTaskId: Id<"tasks">;
@@ -46,6 +76,7 @@ function miniTasksInsertPayloadFromPlanDays(
     scheduledDate: string;
     minutes: number;
     tier: PlanBlock["tier"];
+    planOrder?: number;
   }> = [];
   for (const [date, day] of Object.entries(days)) {
     for (const block of day.blocks) {
@@ -55,6 +86,7 @@ function miniTasksInsertPayloadFromPlanDays(
         scheduledDate: date,
         minutes: block.minutes,
         tier: block.tier,
+        planOrder: block.plan_order,
       });
     }
   }
@@ -81,13 +113,16 @@ async function regenerateFullPlanForUser(
   const period = resolvePlanningPeriod({
     userDefaults: base.userDefaults,
     horizonFromDefaultsOnly: true,
+    userTimeZone: base.userTimezone,
   });
+  const widenedPeriod = widenPeriodEndToRemainingDueDates(period, base.tasks);
 
   const feasibilityPayload = computeFeasibilityPayload(
     base.tasks,
     base.availability,
-    period.period_start,
-    period.period_end
+    widenedPeriod.period_start,
+    widenedPeriod.period_end,
+    base.userTimezone
   );
 
   const overallTasks = base.tasks.filter((t) => !t.parent_task_id);
@@ -119,7 +154,7 @@ async function regenerateFullPlanForUser(
     mustDoStreakMiss: 0,
   });
 
-  const isRecovery = driftResult.falling_behind;
+  const isRecovery = driftResult.falling_behind_work;
 
   let result: Awaited<ReturnType<typeof generatePlan>>;
   try {
@@ -127,11 +162,12 @@ async function regenerateFullPlanForUser(
       base.tasks,
       base.availability,
       feasibilityPayload.feasibility,
-      period.period_start,
-      period.period_end,
+        widenedPeriod.period_start,
+        widenedPeriod.period_end,
       isRecovery,
       driftResult,
-      args.updateReason
+      args.updateReason,
+      base.miniTasks
     );
   } catch (err) {
     if (err instanceof ApiError && err.code === "NO_REMAINING_WORK") {
@@ -210,13 +246,19 @@ export const generate = action({
       period_end: args.period_end,
       userDefaults: base.userDefaults,
       horizonFromDefaultsOnly: args.planning_horizon_days === undefined,
+      userTimeZone: base.userTimezone,
     });
+    const widenedPeriod =
+      args.period_end || args.planning_horizon_days !== undefined || args.period_mode === "calendar_month"
+        ? period
+        : widenPeriodEndToRemainingDueDates(period, base.tasks);
 
     const feasibilityPayload = computeFeasibilityPayload(
       base.tasks,
       base.availability,
-      period.period_start,
-      period.period_end
+      widenedPeriod.period_start,
+      widenedPeriod.period_end,
+      base.userTimezone
     );
 
     const overallTasks = base.tasks.filter((t) => !t.parent_task_id);
@@ -251,8 +293,8 @@ export const generate = action({
       mustDoStreakMiss: 0,
     });
 
-    const isRecovery = args.recovery_mode ?? driftResult.falling_behind;
-    const updateReason: PlanUpdateReason = driftResult.falling_behind
+    const isRecovery = args.recovery_mode ?? driftResult.falling_behind_work;
+    const updateReason: PlanUpdateReason = driftResult.falling_behind_work
       ? "auto_drift"
       : base.priorPlanCount === 0
         ? "initial"
@@ -264,11 +306,12 @@ export const generate = action({
         base.tasks,
         base.availability,
         feasibilityPayload.feasibility,
-        period.period_start,
-        period.period_end,
+        widenedPeriod.period_start,
+        widenedPeriod.period_end,
         isRecovery,
         driftResult,
-        updateReason
+        updateReason,
+        base.miniTasks
       );
     } catch (err) {
       if (err instanceof ApiError) {
@@ -306,9 +349,9 @@ export const generate = action({
       replaceAllMiniTasks: true,
       planJson: planJsonString,
       overloadScore: feasibilityPayload.overload.score,
-      periodStart: period.period_start,
-      periodEnd: period.period_end,
-      horizonDays: period.horizon_days,
+      periodStart: widenedPeriod.period_start,
+      periodEnd: widenedPeriod.period_end,
+      horizonDays: widenedPeriod.horizon_days,
       updateReason,
       updateSummary: result.updateSummary ?? undefined,
       recoveryMode: planForStorage.meta.recovery_mode,
@@ -335,9 +378,9 @@ export const generate = action({
         updatedAt: planRow.created_at,
         updateReason: planRow.update_reason,
         updateSummary: planRow.update_summary,
-        period_start: period.period_start,
-        period_end: period.period_end,
-        horizon_days: period.horizon_days,
+        period_start: widenedPeriod.period_start,
+        period_end: widenedPeriod.period_end,
+        horizon_days: widenedPeriod.horizon_days,
         plan: planRow,
         drift: driftResult,
         period,
@@ -372,13 +415,15 @@ export const mergeNewTaskPlan = internalAction({
     const period = resolvePlanningPeriod({
       userDefaults: mergeCtx.userDefaults,
       horizonFromDefaultsOnly: true,
+      userTimeZone: mergeCtx.userTimezone,
     });
 
     const feasibilityPayload = computeFeasibilityPayload(
       mergeCtx.tasks,
       mergeCtx.availability,
       period.period_start,
-      period.period_end
+      period.period_end,
+      mergeCtx.userTimezone
     );
 
     const preserved = mergeCtx.miniTasks.filter(
@@ -426,7 +471,8 @@ export const mergeNewTaskPlan = internalAction({
           period.period_end,
           false,
           null,
-          "tasks_changed"
+          "tasks_changed",
+          mergeCtx.miniTasks
         );
         const { updateSummary: _omitFull, ...fullStorage } = full;
         void _omitFull;
@@ -470,6 +516,7 @@ export const mergeNewTaskPlan = internalAction({
         scheduledDate: mt.scheduledDate,
         minutes: mt.minutes,
         tier: mt.tier,
+        planOrder: mt.planOrder,
       })),
     });
   },

@@ -17,7 +17,8 @@ function buildTasksFromIcs(text: string): Task[] {
   const userId = "test-user";
   const now = new Date().toISOString();
   const tasks: Task[] = [];
-  for (const ev of events) {
+  for (let i = 0; i < events.length; i++) {
+    const ev = events[i];
     const dueDate = ev.due ?? ev.dtstart ?? ev.dtend;
     if (!dueDate) continue;
     const id = `task_${ev.uid.replace(/[^a-z0-9]+/gi, "_")}`;
@@ -35,6 +36,8 @@ function buildTasksFromIcs(text: string): Task[] {
       source: "ics_upload",
       external_uid: ev.uid,
       scheduled_date: null,
+      calendar_group_key: ev.calendarGroupKey ?? null,
+      ics_sequence: ev.icsSequence !== undefined ? ev.icsSequence : i,
       created_at: now,
       updated_at: now,
     });

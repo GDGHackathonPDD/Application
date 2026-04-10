@@ -1,3 +1,4 @@
+import { effectiveMinutesFromAvailableHours } from "@convex/lib/availability_cap"
 import { cn } from "@/lib/utils"
 import type { OverallTask, PlanDay } from "@/lib/types/momentum"
 
@@ -55,8 +56,9 @@ export function ScheduleDayCell({
   }
 
   const isToday = isSameDay(day.date, today)
+  const capacityH = effectiveMinutesFromAvailableHours(day.availableHours) / 60
   const plannedH = day.scheduledMinutes / 60
-  const cap = Math.min(plannedH / Math.max(day.availableHours, 0.01), 1)
+  const cap = Math.min(plannedH / Math.max(capacityH, 0.01), 1)
 
   /** List every deadline on this day. Do not hide a task just because it also has a Planned chunk — the mini title often does not match the assignment name. */
   const dueTaskIds = day.overallDueTaskIds.filter((id) => tasksById.has(id))

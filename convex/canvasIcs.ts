@@ -10,6 +10,7 @@ import {
   fetchAndParseICS,
   parseICS,
 } from "./lib/canvas/ics";
+import { formatYmdInTimeZone } from "./lib/calendar_dates";
 
 const MAX_UPLOADED_ICS_BYTES = 512 * 1024;
 
@@ -33,7 +34,7 @@ export const getSettingsForUser = internalQuery({
       .query("canvasIcsSettings")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .unique();
-    return { userId: user._id, settings };
+    return { userId: user._id, userTimezone: user.timezone, settings };
   },
 });
 
@@ -48,6 +49,8 @@ export const applyCanvasSync = internalMutation({
         summary: v.string(),
         dueDate: v.string(),
         color: v.string(),
+        calendarGroupKey: v.optional(v.string()),
+        icsSequence: v.number(),
       })
     ),
   },
@@ -65,6 +68,9 @@ export const applyCanvasSync = internalMutation({
           title: e.summary,
           dueDate: e.dueDate,
           color: e.color,
+          calendarGroupKey: e.calendarGroupKey,
+          icsSequence: e.icsSequence,
+          planSequence: undefined,
           updatedAt: now,
         });
         upserted++;
@@ -80,6 +86,8 @@ export const applyCanvasSync = internalMutation({
           source: sourceTag,
           externalUid: e.uid,
           color: e.color,
+          calendarGroupKey: e.calendarGroupKey,
+          icsSequence: e.icsSequence,
           createdAt: now,
           updatedAt: now,
         });
@@ -222,8 +230,9 @@ export const sync = action({
     success: true;
     data: { synced: number; total_events: number };
   }> => {
-    const { userId, settings }: {
+    const { userId, userTimezone, settings }: {
       userId: Id<"users">;
+      userTimezone: string;
       settings: Doc<"canvasIcsSettings"> | null;
     } = await ctx.runQuery(internal.canvasIcs.getSettingsForUser, {});
     if (!settings) {
@@ -271,16 +280,27 @@ export const sync = action({
       summary: string;
       dueDate: string;
       color: string;
+      calendarGroupKey?: string;
+      icsSequence: number;
     }[] = [];
 
+    const todayYmd = formatYmdInTimeZone(userTimezone, new Date());
+
+    let fileOrder = 0;
     for (const event of events) {
       const dueDate = event.due ?? event.dtstart ?? event.dtend;
       if (!dueDate) continue;
+      // Skip past calendar days — only sync today and future due/start/end dates.
+      if (dueDate < todayYmd) continue;
+      const icsSequence = event.icsSequence !== undefined ? event.icsSequence : fileOrder;
+      fileOrder += 1;
       payload.push({
         uid: event.uid,
         summary: event.summary,
         dueDate,
         color: colorForUid(event.uid),
+        calendarGroupKey: event.calendarGroupKey,
+        icsSequence,
       });
     }
 

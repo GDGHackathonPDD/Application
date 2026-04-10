@@ -1,12 +1,14 @@
 import type { PeriodMode, PlanningPeriod } from '../types';
 import { FEASIBILITY_CONFIG } from '../config';
-import { formatYmd, parseYmd } from '../calendar_dates';
+import { formatYmd, formatYmdInTimeZone, parseYmd } from '../calendar_dates';
 
 export function resolvePlanningPeriod(input: {
   planning_horizon_days?: number;
   period_mode?: PeriodMode;
   period_start?: string;
   period_end?: string;
+  /** IANA zone from `users.timezone` so "today" matches the user, not the server clock. */
+  userTimeZone?: string;
   userDefaults?: {
     default_planning_horizon_days?: number;
     default_period_mode?: PeriodMode;
@@ -17,7 +19,9 @@ export function resolvePlanningPeriod(input: {
   today?: Date;
 }): PlanningPeriod {
   const today = input.today ?? new Date();
-  const todayStr = formatYmd(today);
+  const todayStr = input.userTimeZone
+    ? formatYmdInTimeZone(input.userTimeZone, today)
+    : formatYmd(today);
   const mode = input.period_mode ?? input.userDefaults?.default_period_mode ?? 'rolling';
   const explicitHorizon = input.planning_horizon_days !== undefined;
   let defaultHorizon =
@@ -31,6 +35,10 @@ export function resolvePlanningPeriod(input: {
   }
 
   let periodStart: string = input.period_start ?? todayStr;
+  // Never plan in the past: callers may pass an explicit range that starts before today.
+  if (parseYmd(periodStart) < parseYmd(todayStr)) {
+    periodStart = todayStr;
+  }
   let periodEnd: string;
   let horizonDays: number;
 

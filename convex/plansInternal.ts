@@ -4,6 +4,7 @@ import type { Id } from "./_generated/dataModel";
 import { getAuthUser } from "./lib/auth";
 import { mapAvailability, mapMiniTask, mapPlan, mapTask } from "./lib/mappers";
 import type { MiniTask, PlanJson, Task } from "./lib/types";
+import { syncParentProgressFromMiniTasks } from "./lib/parent_task_progress";
 
 const planUpdateReason = v.union(
   v.literal("initial"),
@@ -50,6 +51,7 @@ export const insertPlan = internalMutation({
         scheduledDate: v.string(),
         minutes: v.number(),
         tier,
+        planOrder: v.optional(v.number()),
       })
     ),
   },
@@ -82,7 +84,13 @@ export const insertPlan = internalMutation({
         minutes: mt.minutes,
         tier: mt.tier,
         completed: false,
+        planOrder: mt.planOrder,
       });
+    }
+
+    const parentIds = [...new Set(args.miniTasks.map((mt) => mt.parentTaskId))];
+    for (const pid of parentIds) {
+      await syncParentProgressFromMiniTasks(ctx, pid);
     }
 
     return planId;
@@ -124,6 +132,7 @@ export const getGenerationContext = internalQuery({
 
     return {
       userId: user._id,
+      userTimezone: user.timezone,
       userDefaults: {
         default_planning_horizon_days: user.defaultPlanningHorizonDays,
         default_period_mode: user.defaultPeriodMode,
@@ -177,6 +186,7 @@ export const getGenerationContextForUser = internalQuery({
 
     return {
       userId: args.userId,
+      userTimezone: user.timezone,
       userDefaults: {
         default_planning_horizon_days: user.defaultPlanningHorizonDays,
         default_period_mode: user.defaultPeriodMode,
@@ -250,6 +260,7 @@ export const getMergeContext = internalQuery({
 
     return {
       userId: args.userId,
+      userTimezone: user.timezone,
       userDefaults: {
         default_planning_horizon_days: user.defaultPlanningHorizonDays,
         default_period_mode: user.defaultPeriodMode,
@@ -275,6 +286,7 @@ export const deleteIncompleteMinisForParent = internalMutation({
         await ctx.db.delete(r._id);
       }
     }
+    await syncParentProgressFromMiniTasks(ctx, args.parentTaskId);
   },
 });
 

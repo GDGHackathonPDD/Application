@@ -40,7 +40,13 @@ export default defineSchema({
     color: v.optional(v.string()),
     source: v.optional(v.string()),
     externalUid: v.optional(v.string()),
+    /** From ICS `CATEGORIES` / `URL` at sync; tasks with same key schedule as one block. */
+    calendarGroupKey: v.optional(v.string()),
     scheduledDate: v.optional(v.string()),
+    /** Overall tasks only: lower = scheduled first in planner (sequential execution order). */
+    planSequence: v.optional(v.number()),
+    /** ICS `SEQUENCE` or file-order index at sync; lower = do first within the same calendar group. */
+    icsSequence: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -58,6 +64,8 @@ export default defineSchema({
     tier,
     completed: v.boolean(),
     completedAt: v.optional(v.number()),
+    /** Per parent: 0 = first step to do; aligns with plan_json block order. */
+    planOrder: v.optional(v.number()),
   })
     .index("by_user_scheduled", ["userId", "scheduledDate"])
     .index("by_parent_task", ["parentTaskId"])

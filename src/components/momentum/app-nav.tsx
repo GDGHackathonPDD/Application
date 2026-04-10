@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/today", label: "Today" },
   { href: "/schedule", label: "Schedule" },
+  { href: "/debug", label: "Debug" },
 ] as const
 
 export function AppNav() {

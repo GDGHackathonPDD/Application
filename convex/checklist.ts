@@ -2,6 +2,7 @@ import { mutation } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { getAuthUser } from "./lib/auth";
 import { mapChecklistItem, mapMiniTask } from "./lib/mappers";
+import { syncParentProgressFromMiniTasks } from "./lib/parent_task_progress";
 
 export const update = mutation({
   args: {
@@ -23,6 +24,7 @@ export const update = mutation({
         await ctx.db.patch(miniId, updatePayload);
         const doc = await ctx.db.get("miniTasks", miniId);
         if (!doc) throw new ConvexError({ message: "Update failed", code: "UPDATE_FAILED" });
+        await syncParentProgressFromMiniTasks(ctx, doc.parentTaskId);
         return { success: true as const, data: mapMiniTask(doc) };
       }
     }

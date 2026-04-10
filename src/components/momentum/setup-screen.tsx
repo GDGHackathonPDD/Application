@@ -282,6 +282,13 @@ export function SetupScreen() {
     [schedulePersist]
   );
 
+  const handleMarkTaskDone = useCallback(
+    (id: string) => {
+      handleTaskChange(id, { progressPercent: 100 });
+    },
+    [handleTaskChange]
+  );
+
   const handleRemove = useCallback(
     async (id: string) => {
       setRemoveTaskError(null);
@@ -463,7 +470,9 @@ export function SetupScreen() {
           <CardTitle>Tasks & availability</CardTitle>
           <CardDescription>
             Overall tasks use deadlines and estimated hours; the scheduler
-            creates mini tasks on the calendar.
+            creates mini tasks on the calendar. If you already finished an
+            assignment before importing it, use the check on that row to mark
+            it done (100% progress) so feasibility ignores it.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-8">
@@ -516,6 +525,7 @@ export function SetupScreen() {
             errors={submitAttempted ? errors : undefined}
             onChange={handleTaskChange}
             onRemove={handleRemove}
+            onMarkDone={handleMarkTaskDone}
           />
           <div className="flex flex-wrap items-center gap-3">
             <Button

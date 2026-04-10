@@ -5,10 +5,13 @@ import { useAction, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
 import { api } from "@convex/_generated/api";
 
+import {
+  useDashboardConvexArgs,
+  useEffectiveDate,
+} from "@/components/effective-date-context";
 import { ScheduleScreen } from "@/components/momentum/schedule-screen";
 import { useConvexProvisioned } from "@/components/convex-provision-context";
 import { mapDashboardToMomentum } from "@/lib/convex-to-momentum";
-import { localDateIso } from "@/lib/local-date";
 
 function readConvexErrorMessage(e: unknown): string {
   if (e instanceof ConvexError) {
@@ -32,7 +35,9 @@ const SCHEDULE_AUTOPLAN_SESSION_KEY = "momentum_schedule_autoplan_v1";
 
 function ScheduleInner() {
   const { provisioned } = useConvexProvisioned();
-  const dashboard = useQuery(api.dashboard.get, provisioned ? {} : "skip");
+  const { effectiveDateIso } = useEffectiveDate();
+  const dashboardArgs = useDashboardConvexArgs(provisioned);
+  const dashboard = useQuery(api.dashboard.get, dashboardArgs);
   const generatePlan = useAction(api.plans.generate);
   const [generateBusy, setGenerateBusy] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
@@ -56,7 +61,7 @@ function ScheduleInner() {
       setGenerateBusy(true);
       setGenerateError(null);
       try {
-        await generatePlan({ period_start: localDateIso() });
+        await generatePlan({ period_start: effectiveDateIso });
         if (typeof window !== "undefined") {
           sessionStorage.setItem(SCHEDULE_AUTOPLAN_SESSION_KEY, "1");
         }
@@ -66,13 +71,25 @@ function ScheduleInner() {
         setGenerateBusy(false);
       }
     })();
-  }, [provisioned, dashboard, generatePlan]);
+  }, [provisioned, dashboard, generatePlan, effectiveDateIso]);
 
-  const handleGeneratePlan = useCallback(async () => {
+  const handleGeneratePlan = useCallback(async ({
+    periodStart,
+    periodEnd,
+    preset,
+  }: {
+    periodStart: string;
+    periodEnd: string;
+    preset: "7" | "month" | "custom";
+  }) => {
     setGenerateError(null);
     setGenerateBusy(true);
     try {
-      await generatePlan({ period_start: localDateIso() });
+      await generatePlan({
+        period_start: periodStart,
+        period_end: periodEnd,
+        period_mode: preset === "custom" ? "date_range" : preset === "month" ? "calendar_month" : "date_range",
+      });
     } catch (e) {
       setGenerateError(readConvexErrorMessage(e));
     } finally {
@@ -86,7 +103,9 @@ function ScheduleInner() {
     );
   }
 
-  const mapped = mapDashboardToMomentum(dashboard);
+  const mapped = mapDashboardToMomentum(dashboard, {
+    calendarAnchorYmd: effectiveDateIso,
+  });
 
   return (
     <ScheduleScreen

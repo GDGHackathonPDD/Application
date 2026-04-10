@@ -11,6 +11,9 @@
     "typecheck": "tsc --noEmit",
     "agent-api": "cd ../Agent && ./.venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
     "test:ics-plan": "tsx scripts/test-ics-to-minis.ts",
+    "test:scheduler-pack": "tsx scripts/verify-scheduler-pack.ts",
+    "test:scheduler-order": "tsx scripts/verify-scheduler-order.ts",
+    "test:scheduler": "npm run test:scheduler-pack && npm run test:scheduler-order && npm run test:ics-plan",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"
   },
