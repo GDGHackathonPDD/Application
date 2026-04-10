@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
+import { IsoDatePicker } from "@/components/ui/iso-date-picker";
 import { localDateIso } from "@/lib/local-date";
 import { cn } from "@/lib/utils";
 
@@ -91,6 +92,7 @@ export function useDashboardConvexArgs(provisioned: boolean) {
 
 export function EffectiveDateBar({ className }: { className?: string }) {
   const { effectiveDateIso, isOverrideActive, setOverrideDate } = useEffectiveDate();
+  const realTodayIso = localDateIso();
 
   return (
     <div
@@ -100,19 +102,17 @@ export function EffectiveDateBar({ className }: { className?: string }) {
       )}
     >
       <span className="text-muted-foreground hidden sm:inline">App date</span>
-      <input
-        type="date"
-        className="border-input bg-background h-8 max-w-[11rem] rounded-md border px-2 text-xs shadow-sm"
+      <IsoDatePicker
         value={effectiveDateIso}
-        onChange={(e) => {
-          const next = e.target.value;
-          if (next === localDateIso()) {
+        onChange={(next) => {
+          if (next === realTodayIso) {
             setOverrideDate(null);
           } else {
             setOverrideDate(next);
           }
         }}
-        aria-label="App calendar date"
+        buttonClassName="h-8 min-w-[11rem] max-w-[11rem] justify-between text-xs"
+        align="end"
       />
       {isOverrideActive ? (
         <Button
