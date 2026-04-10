@@ -33,3 +33,9 @@ Single Next.js app combining the **Convex + Clerk** backend with the **shadcn / 
 - `src/app/` — App Router, `providers.tsx` (Clerk → Convex → provision → theme), `proxy.ts` for Clerk route protection (Next.js 16)
 - `src/components/` — UI including `convex-provision-context.tsx` and Momentum screens
 - `src/lib/convex-to-momentum.ts` — Maps Convex shapes to MVP `lib/types/momentum` types
+
+## To Change overall shadcn theme of the site:
+```bash
+npx shadcn@latest init --preset [your-preset-code] -f -y
+```
+do *NOT* re-install UI components
