@@ -21,6 +21,7 @@ import {
 } from './validate';
 import { deterministicSchedulerModeA, deterministicSchedulerModeB, type SchedulerInput } from './scheduler';
 import { resolvePlanningPeriod } from './period';
+import { eachYmdInRange, formatYmd, parseYmd } from '../calendar_dates';
 import { ApiError } from '../errors';
 
 /** Base URL of repo-root `agent-api/` FastAPI service (local or Cloud Run). */
@@ -70,21 +71,57 @@ function buildEffectiveMinutesMap(
   periodEnd: string
 ): Record<string, number> {
   const result: Record<string, number> = {};
-  const start = new Date(periodStart);
-  const end = new Date(periodEnd);
-
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const dateStr = d.toISOString().slice(0, 10);
+  for (const dateStr of eachYmdInRange(periodStart, periodEnd)) {
+    const d = parseYmd(dateStr);
     const dow = d.getDay();
     const row = availability.find((a) => a.day_of_week === dow);
     result[dateStr] = computeEffectiveMinutesPerDay(row?.available_hours ?? 0);
   }
-
   return result;
 }
 
 function remainingWorkMinutes(task: Task): number {
   return Math.round(task.estimated_hours * 60 * (1 - task.progress_percent / 100));
+}
+
+function previousYmd(ymd: string): string {
+  const d = parseYmd(ymd);
+  d.setDate(d.getDate() - 1);
+  return formatYmd(d);
+}
+
+/**
+ * Parents that had incomplete minis on the calendar day before the new plan window — they get
+ * scheduled first so we don’t start “new” homework before finishing yesterday’s planned slice.
+ */
+export function carryoverParentIdsFromMinis(
+  periodStart: string,
+  miniTasks: MiniTask[],
+  tasks: Task[]
+): string[] {
+  const prevDay = previousYmd(periodStart);
+  const overallById = new Map(
+    tasks.filter((t) => !t.parent_task_id).map((t) => [t.id, t])
+  );
+  const dayMinis = miniTasks
+    .filter((m) => !m.completed && m.scheduled_date === prevDay)
+    .sort((a, b) => {
+      const pc = a.parent_task_id.localeCompare(b.parent_task_id);
+      if (pc !== 0) return pc;
+      return (a.plan_order ?? 0) - (b.plan_order ?? 0);
+    });
+  const order: string[] = [];
+  const seen = new Set<string>();
+  for (const m of dayMinis) {
+    const pid = m.parent_task_id;
+    if (seen.has(pid)) continue;
+    const t = overallById.get(pid);
+    if (!t) continue;
+    if (remainingWorkMinutes(t) <= 0) continue;
+    seen.add(pid);
+    order.push(pid);
+  }
+  return order;
 }
 
 async function fetchDecompositionForParents(
@@ -171,7 +208,10 @@ async function fetchCopy(
           shortfall_hours: feasibility.shortfall_claimed_hours,
         },
         drift: driftResult
-          ? { falling_behind: driftResult.falling_behind, reason_codes: driftResult.reason_codes }
+          ? {
+              falling_behind: driftResult.falling_behind_work,
+              reason_codes: driftResult.reason_codes,
+            }
           : null,
         update_reason: updateReason,
       }
@@ -193,7 +233,9 @@ export async function generatePlan(
   periodEnd: string,
   recoveryMode: boolean,
   driftResult: DriftResult | null,
-  updateReason: PlanUpdateReason = 'manual_regenerate'
+  updateReason: PlanUpdateReason = 'manual_regenerate',
+  /** When provided, parents with incomplete minis on the day before `periodStart` run first. */
+  miniTasksForCarryover?: MiniTask[] | null
 ): Promise<ValidatedPlanJson & { explanation: string; updateSummary: string }> {
   const overallTasks = tasks.filter((t) => !t.parent_task_id);
   const tasksWithRemaining = overallTasks.filter(
@@ -207,15 +249,19 @@ export async function generatePlan(
   let planJson: ValidatedPlanJson;
   let decompositionSteps: Map<string, DecompositionStep[]> = new Map();
 
-  if (recoveryMode) {
-    try {
-      decompositionSteps = await fetchDecomposition(tasks, feasibility);
-    } catch {
-      decompositionSteps = new Map();
-    }
+  /** Segmentation agent (`/decompose`) — always attempted; placer picks Mode B vs A from the result. */
+  try {
+    decompositionSteps = await fetchDecomposition(tasks, feasibility);
+  } catch {
+    decompositionSteps = new Map();
   }
 
-  if (recoveryMode && decompositionSteps.size > 0) {
+  const carryoverParentIds =
+    miniTasksForCarryover && miniTasksForCarryover.length > 0
+      ? carryoverParentIdsFromMinis(periodStart, miniTasksForCarryover, tasks)
+      : [];
+
+  if (decompositionSteps.size > 0) {
     planJson = deterministicSchedulerModeB({
       tasks,
       availability,
@@ -223,6 +269,7 @@ export async function generatePlan(
       period_end: periodEnd,
       recovery_mode: true,
       decompositionSteps,
+      carryoverParentIds: carryoverParentIds.length > 0 ? carryoverParentIds : undefined,
     }) as ValidatedPlanJson;
   } else {
     planJson = deterministicSchedulerModeA({
@@ -231,6 +278,7 @@ export async function generatePlan(
       period_start: periodStart,
       period_end: periodEnd,
       recovery_mode: recoveryMode,
+      carryoverParentIds: carryoverParentIds.length > 0 ? carryoverParentIds : undefined,
     }) as ValidatedPlanJson;
   }
 
@@ -242,7 +290,7 @@ export async function generatePlan(
 
   const copy = await fetchCopy(planJson, feasibility, driftResult, updateReason);
   planJson.explanation = copy.explanation;
-  planJson.meta.recovery_mode = recoveryMode;
+  planJson.meta.recovery_mode = recoveryMode || decompositionSteps.size > 0;
 
   return { ...planJson, explanation: copy.explanation, updateSummary: copy.updateSummary };
 }
@@ -271,6 +319,7 @@ function preservedBlocksByDay(minis: MiniTask[], newTaskId: string): Record<stri
       title: m.title,
       minutes: m.minutes,
       tier: m.tier,
+      plan_order: m.plan_order ?? 0,
     };
     if (!byDay[m.scheduled_date]) byDay[m.scheduled_date] = [];
     byDay[m.scheduled_date].push(b);
@@ -288,7 +337,13 @@ function mergeIncrementalDays(
     const a = preserved[d] ?? [];
     const b = newSubPlanDays[d]?.blocks ?? [];
     if (a.length === 0 && b.length === 0) continue;
-    out[d] = { blocks: [...a, ...b] };
+    const merged = [...a, ...b];
+    merged.sort((x, y) => {
+      const c = x.parent_task_id.localeCompare(y.parent_task_id);
+      if (c !== 0) return c;
+      return (x.plan_order ?? 0) - (y.plan_order ?? 0);
+    });
+    out[d] = { blocks: merged };
   }
   return out;
 }
@@ -311,6 +366,7 @@ export async function incrementalMergeNewTask(
       scheduledDate: string;
       minutes: number;
       tier: PlanBlock['tier'];
+      planOrder?: number;
     }>;
   }
 > {
@@ -370,6 +426,7 @@ export async function incrementalMergeNewTask(
     scheduledDate: string;
     minutes: number;
     tier: PlanBlock['tier'];
+    planOrder?: number;
   }> = [];
 
   for (const [date, day] of Object.entries(newSubPlan.days)) {
@@ -380,6 +437,7 @@ export async function incrementalMergeNewTask(
         scheduledDate: date,
         minutes: block.minutes,
         tier: block.tier,
+        planOrder: block.plan_order,
       });
     }
   }

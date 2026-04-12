@@ -1,11 +1,6 @@
 "use client"
 
 import Link from "next/link"
-import { useCallback, useState } from "react"
-import { useMutation } from "convex/react"
-import { ConvexError } from "convex/values"
-
-import { api } from "@convex/_generated/api"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -18,27 +13,26 @@ import type { MiniTask, OverallTask } from "@/lib/types/momentum"
 
 import { TodayChecklist } from "./today-checklist"
 
-function readConvexErrorMessage(e: unknown): string {
-  if (e instanceof ConvexError) {
-    const d = e.data as { message?: string }
-    if (typeof d?.message === "string") return d.message
-  }
-  if (e instanceof Error) return e.message
-  return String(e)
-}
-
 export function TodayScreen({
   dateIso,
   tasks,
-  todayMinis,
+  openMinis,
+  checkedMinis,
+  onToggleComplete,
+  onRegeneratePlan,
+  regenerateBusy = false,
+  regenerateError = null,
 }: {
   dateIso: string
   tasks: OverallTask[]
-  todayMinis: MiniTask[]
+  openMinis: MiniTask[]
+  checkedMinis: MiniTask[]
+  onToggleComplete?: (miniTaskId: string, completed: boolean) => void | Promise<void>
+  /** When set, “Regenerate plan” runs full replan (segmentation agent + deterministic scheduler). */
+  onRegeneratePlan?: () => void | Promise<void>
+  regenerateBusy?: boolean
+  regenerateError?: string | null
 }) {
-  const [error, setError] = useState<string | null>(null)
-  const updateChecklist = useMutation(api.checklist.update)
-
   const tasksById = new Map(tasks.map((t) => [t.id, t]))
 
   const dateLabel = new Date(dateIso + "T12:00:00").toLocaleDateString(
@@ -51,25 +45,14 @@ export function TodayScreen({
     }
   )
 
-  const onToggleComplete = useCallback(
-    async (miniTaskId: string, completed: boolean) => {
-      setError(null)
-      try {
-        await updateChecklist({ id: miniTaskId, completed })
-      } catch (e) {
-        setError(readConvexErrorMessage(e))
-      }
-    },
-    [updateChecklist]
-  )
-
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Today</h1>
           <p className="text-muted-foreground text-sm">
-            Mini tasks from your schedule for this date.
+            Incomplete steps from your plan, ordered by assignment deadline—not
+            locked to a single calendar day.
           </p>
         </div>
         <Button type="button" variant="outline" size="sm" asChild>
@@ -79,32 +62,43 @@ export function TodayScreen({
 
       <Card>
         <CardHeader>
-          <CardTitle>Checklist</CardTitle>
+          <CardTitle>Do by deadline</CardTitle>
           <CardDescription>
-            Mark steps complete; parent task progress updates from completed time
-            blocks.
+            Each step shows when the assignment is due. The suggested day is only
+            how your plan spreads work—tick off when you finish the step. Checks
+            update on screen right away; the server saves in the background.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {error ? (
-            <p className="text-destructive mb-3 text-sm" role="alert">
-              {error}
-            </p>
-          ) : null}
           <TodayChecklist
-            dateLabel={dateLabel}
-            summaryLine="Focus on must-do items first; optional blocks are bonus depth."
-            items={todayMinis}
+            todayIso={dateIso}
+            headingLabel={dateLabel}
+            summaryLine="Soonest deadlines first; optional blocks are bonus depth."
+            openItems={openMinis}
+            checkedItems={checkedMinis}
             tasksById={tasksById}
             onToggleComplete={onToggleComplete}
           />
         </CardContent>
       </Card>
 
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="secondary">
-          Regenerate plan
-        </Button>
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            data-testid="regenerate-plan"
+            disabled={regenerateBusy || !onRegeneratePlan}
+            onClick={() => void onRegeneratePlan?.()}
+          >
+            {regenerateBusy ? "Regenerating…" : "Regenerate plan (recovery steps)"}
+          </Button>
+        </div>
+        {regenerateError ? (
+          <p className="text-destructive text-sm" role="alert">
+            {regenerateError}
+          </p>
+        ) : null}
       </div>
     </div>
   )

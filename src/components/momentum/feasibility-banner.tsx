@@ -21,6 +21,17 @@ export function FeasibilityBanner({
         <AlertTitle>{feasibility.headline}</AlertTitle>
         <AlertDescription className="space-y-2">
           <p>{feasibility.subtext}</p>
+          {feasibility.taskWindowShortfalls && feasibility.taskWindowShortfalls.length > 0 ? (
+            <ul className="list-inside list-disc text-sm">
+              {feasibility.taskWindowShortfalls.map((t) => (
+                <li key={`${t.title}-${t.dueDate}`}>
+                  <span className="font-medium">{t.title}</span> — needs ~{t.remainingHours.toFixed(1)} h
+                  before the due date, ~{t.availableHours.toFixed(1)} h available
+                  {t.overdue ? " (overdue — horizon only)" : ""}, short ~{t.shortfallHours.toFixed(1)} h
+                </li>
+              ))}
+            </ul>
+          ) : null}
           {feasibility.suggestions.length > 0 && (
             <ul className="list-inside list-disc text-sm">
               {feasibility.suggestions.map((s) => (
@@ -46,6 +57,16 @@ export function FeasibilityBanner({
         <div className="space-y-2">
           <p className="font-heading font-medium">{feasibility.headline}</p>
           <p className="text-muted-foreground text-sm">{feasibility.subtext}</p>
+          {feasibility.taskWindowShortfalls && feasibility.taskWindowShortfalls.length > 0 ? (
+            <ul className="list-inside list-disc text-sm text-muted-foreground">
+              {feasibility.taskWindowShortfalls.map((t) => (
+                <li key={`${t.title}-${t.dueDate}`}>
+                  {t.title} — ~{t.remainingHours.toFixed(1)} h vs ~{t.availableHours.toFixed(1)} h available
+                  {t.overdue ? " (overdue)" : ""}
+                </li>
+              ))}
+            </ul>
+          ) : null}
           {feasibility.suggestions.length > 0 && (
             <ul className="list-inside list-disc text-sm text-muted-foreground">
               {feasibility.suggestions.map((s) => (

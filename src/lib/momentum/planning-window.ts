@@ -1,4 +1,5 @@
 import type {
+  MiniTask,
   OverallTask,
   PlanningPeriodPreset,
   UserPlan,
@@ -43,6 +44,27 @@ function hoursForWeekday(d: Date, w: WeeklyAvailability): number {
   return map[d.getDay()] ?? 0
 }
 
+/**
+ * Ensures the schedule never ends before an open task due date or an incomplete mini’s scheduled day.
+ */
+export function extendCalendarRangeWithWorkDates(
+  periodStart: string,
+  periodEnd: string,
+  tasks: OverallTask[],
+  minisByParent: Map<string, MiniTask[]>
+): { periodStart: string; periodEnd: string } {
+  let end = periodEnd
+  for (const t of tasks) {
+    if (t.dueDate > end) end = t.dueDate
+  }
+  for (const arr of minisByParent.values()) {
+    for (const m of arr) {
+      if (!m.completed && m.scheduledDate > end) end = m.scheduledDate
+    }
+  }
+  return { periodStart, periodEnd: end }
+}
+
 export function formatInclusiveRangeLabel(
   startIso: string,
   endIso: string
@@ -69,7 +91,15 @@ export function computePlanningRange(
     const end = customEndIso && customEndIso >= periodStart ? customEndIso : periodStart
     periodEnd = end
   } else if (preset === "7") {
-    periodEnd = toISODate(addDays(anchor, 6))
+    // Default schedule strip: 3 calendar days before anchor through 10 after (inclusive).
+    const ps = toISODate(addDays(anchor, -3))
+    const pe = toISODate(addDays(anchor, 10))
+    const span = eachISODateInRange(ps, pe).length
+    return {
+      periodStart: ps,
+      periodEnd: pe,
+      label: `${formatInclusiveRangeLabel(ps, pe)} · ${span} days`,
+    }
   } else {
     periodEnd = toISODate(endOfMonth(anchor))
   }
@@ -91,7 +121,21 @@ export function buildCalendarPlanForWindow(
   availability: WeeklyAvailability,
   tasks: OverallTask[]
 ): UserPlan {
-  const byDate = new Map(plan.days.map((d) => [d.date, { ...d }]))
+  /** Plan JSON can still list blocks after a parent task is deleted; only show blocks for current tasks. */
+  const validParentIds = new Set(tasks.map((t) => t.id))
+
+  const byDate = new Map(
+    plan.days.map((d) => {
+      const blocks = d.blocks
+        .filter((b) => validParentIds.has(b.parentTaskId))
+        .sort((a, b) => {
+          if (a.parentTaskId !== b.parentTaskId) return a.parentTaskId.localeCompare(b.parentTaskId);
+          return (a.planOrder ?? 0) - (b.planOrder ?? 0);
+        })
+      const scheduledMinutes = blocks.reduce((s, b) => s + b.minutes, 0)
+      return [d.date, { ...d, blocks, scheduledMinutes }] as const
+    })
+  )
   const dates = eachISODateInRange(periodStart, periodEnd)
 
   const duesByDate = new Map<string, Set<string>>()
@@ -104,18 +148,23 @@ export function buildCalendarPlanForWindow(
     const existing = byDate.get(date)
     const d = atNoon(date)
     const dueIds = [...(duesByDate.get(date) ?? [])]
+    /** Always from the user's current weekly template — not plan JSON snapshots (they go stale). */
+    const templateHours = hoursForWeekday(d, availability)
 
     if (existing) {
-      const merged = new Set([...existing.overallDueTaskIds, ...dueIds])
+      const merged = new Set(
+        [...existing.overallDueTaskIds, ...dueIds].filter((id) => validParentIds.has(id))
+      )
       return {
         ...existing,
+        availableHours: templateHours,
         overallDueTaskIds: [...merged],
       }
     }
 
     return {
       date,
-      availableHours: hoursForWeekday(d, availability),
+      availableHours: templateHours,
       scheduledMinutes: 0,
       overallDueTaskIds: dueIds,
       blocks: [],

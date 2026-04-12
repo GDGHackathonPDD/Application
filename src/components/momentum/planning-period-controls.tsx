@@ -7,7 +7,7 @@ import type { PlanningPeriodPreset } from "@/lib/types/momentum"
 import { cn } from "@/lib/utils"
 
 const PRESETS = [
-  ["7", "7 days"],
+  ["7", "14 days"],
   ["month", "Month"],
   ["custom", "Custom"],
 ] as const

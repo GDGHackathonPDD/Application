@@ -1,3 +1,4 @@
+import { effectiveMinutesFromAvailableHours } from "@convex/lib/availability_cap"
 import { cn } from "@/lib/utils"
 import type { OverallTask, PlanDay } from "@/lib/types/momentum"
 
@@ -55,14 +56,19 @@ export function ScheduleDayCell({
   }
 
   const isToday = isSameDay(day.date, today)
+  const capacityH = effectiveMinutesFromAvailableHours(day.availableHours) / 60
   const plannedH = day.scheduledMinutes / 60
-  const cap = Math.min(plannedH / Math.max(day.availableHours, 0.01), 1)
+  const cap = Math.min(plannedH / Math.max(capacityH, 0.01), 1)
+
+  /** List every deadline on this day. Do not hide a task just because it also has a Planned chunk — the mini title often does not match the assignment name. */
+  const dueTaskIds = day.overallDueTaskIds.filter((id) => tasksById.has(id))
 
   return (
     <div
       className={cn(
         "flex min-h-[100px] min-w-0 flex-col gap-1.5 overflow-y-auto rounded-xl border bg-card p-2 shadow-xs",
-        compact && "min-h-0 gap-1 p-1.5",
+        compact &&
+          "max-h-[min(26rem,52vh)] min-h-0 gap-1 p-1.5 sm:max-h-[min(28rem,55vh)]",
         isToday &&
           "ring-2 ring-primary ring-offset-2 ring-offset-background"
       )}
@@ -89,16 +95,37 @@ export function ScheduleDayCell({
         {plannedH.toFixed(1)}h / {day.availableHours}h
       </p>
 
-      {day.overallDueTaskIds.length > 0 && (
-        <div className="space-y-1">
-          <p className="text-muted-foreground text-[9px] font-medium uppercase">
+      {dueTaskIds.length > 0 && (
+        <div
+          className={cn(
+            "space-y-1",
+            compact &&
+              dueTaskIds.length > 1 &&
+              "grid grid-cols-2 gap-1 space-y-0"
+          )}
+        >
+          <p
+            className={cn(
+              "text-muted-foreground text-[9px] font-medium uppercase",
+              compact &&
+                dueTaskIds.length > 1 &&
+                "col-span-2"
+            )}
+          >
             Due today
           </p>
-          <p className="text-muted-foreground text-[9px] leading-snug">
-            Deadlines on this date (overall task). Scheduled chunks appear under
-            Planned.
+          <p
+            className={cn(
+              "text-muted-foreground text-[9px] leading-snug",
+              compact &&
+                dueTaskIds.length > 1 &&
+                "col-span-2"
+            )}
+          >
+            Deadlines on this date (overall task). Planned chunks for the same
+            assignment appear below.
           </p>
-          {day.overallDueTaskIds.map((id) => {
+          {dueTaskIds.map((id) => {
             const t = tasksById.get(id)
             if (!t) return null
             return (
@@ -112,12 +139,27 @@ export function ScheduleDayCell({
         </div>
       )}
 
-      <div className="min-h-0 flex-1 space-y-1">
-        <p className="text-muted-foreground text-[9px] font-medium uppercase">
+      <div
+        className={cn(
+          "min-h-0 space-y-1",
+          compact && day.blocks.length > 1 && "grid grid-cols-2 gap-1 space-y-0"
+        )}
+      >
+        <p
+          className={cn(
+            "text-muted-foreground text-[9px] font-medium uppercase",
+            compact && day.blocks.length > 1 && "col-span-2"
+          )}
+        >
           Planned
         </p>
         {day.blocks.length === 0 ? (
-          <p className="text-muted-foreground py-1 text-center text-[10px]">
+          <p
+            className={cn(
+              "text-muted-foreground py-1 text-center text-[10px]",
+              compact && "col-span-2"
+            )}
+          >
             —
           </p>
         ) : (

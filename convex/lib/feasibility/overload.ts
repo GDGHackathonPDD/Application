@@ -59,6 +59,9 @@ export function computeOverloadScore(
   return score;
 }
 
+/** Added when at least one overall task has more remaining hours than fit between today and due (physics impossible on current calendar). */
+const TASK_WINDOW_IMPOSSIBLE_SCORE = 5;
+
 export function getOverloadLabel(score: number): OverloadLabel {
   if (score <= OVERLOAD_BANDS.stable.max) return 'stable';
   if (score <= OVERLOAD_BANDS.drifting.max) return 'drifting';
@@ -68,8 +71,12 @@ export function getOverloadLabel(score: number): OverloadLabel {
 export function computeOverload(
   tasks: Task[],
   availableHoursTotal: number,
-  today: Date
+  today: Date,
+  taskWindowShortfallCount: number = 0
 ) {
-  const score = computeOverloadScore(tasks, availableHoursTotal, today);
+  let score = computeOverloadScore(tasks, availableHoursTotal, today);
+  if (taskWindowShortfallCount > 0) {
+    score += TASK_WINDOW_IMPOSSIBLE_SCORE;
+  }
   return { score, label: getOverloadLabel(score) };
 }

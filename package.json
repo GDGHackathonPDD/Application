@@ -9,7 +9,13 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "agent-api": "cd ../agent-api && ./.venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+    "agent-api": "cd ../Agent && ./.venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
+    "test:ics-plan": "tsx scripts/test-ics-to-minis.ts",
+    "test:scheduler-pack": "tsx scripts/verify-scheduler-pack.ts",
+    "test:scheduler-order": "tsx scripts/verify-scheduler-order.ts",
+    "test:scheduler": "npm run test:scheduler-pack && npm run test:scheduler-order && npm run test:ics-plan",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.36.5",
@@ -36,6 +42,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.52.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

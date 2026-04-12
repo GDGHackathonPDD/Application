@@ -1,6 +1,6 @@
 import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getAuthUser } from "./lib/auth";
 import { mapCanvasIcsSettings } from "./lib/mappers";
@@ -10,6 +10,7 @@ import {
   fetchAndParseICS,
   parseICS,
 } from "./lib/canvas/ics";
+import { formatYmdInTimeZone } from "./lib/calendar_dates";
 import { upsertImportedOverallTask } from "./lib/importedTaskUpsert";
 
 const MAX_UPLOADED_ICS_BYTES = 512 * 1024;
@@ -34,7 +35,7 @@ export const getSettingsForUser = internalQuery({
       .query("canvasIcsSettings")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .unique();
-    return { userId: user._id, settings };
+    return { userId: user._id, userTimezone: user.timezone, settings };
   },
 });
 
@@ -49,13 +50,14 @@ export const applyCanvasSync = internalMutation({
         summary: v.string(),
         dueDate: v.string(),
         color: v.string(),
+        calendarGroupKey: v.optional(v.string()),
+        icsSequence: v.number(),
       })
     ),
   },
   handler: async (ctx, args) => {
     const sourceTag = args.taskSource;
     let upserted = 0;
-    const now = Date.now();
     for (const e of args.events) {
       await upsertImportedOverallTask(ctx, {
         userId: args.userId,
@@ -64,9 +66,12 @@ export const applyCanvasSync = internalMutation({
         summary: e.summary,
         dueDate: e.dueDate,
         color: e.color,
+        calendarGroupKey: e.calendarGroupKey,
+        icsSequence: e.icsSequence,
       });
       upserted++;
     }
+    const now = Date.now();
     await ctx.db.patch(args.settingsId, {
       lastSyncAt: now,
       lastSyncStatus: `ok: ${upserted} tasks synced`,
@@ -203,8 +208,9 @@ export const sync = action({
     success: true;
     data: { synced: number; total_events: number };
   }> => {
-    const { userId, settings }: {
+    const { userId, userTimezone, settings }: {
       userId: Id<"users">;
+      userTimezone: string;
       settings: Doc<"canvasIcsSettings"> | null;
     } = await ctx.runQuery(internal.canvasIcs.getSettingsForUser, {});
     if (!settings) {
@@ -252,16 +258,27 @@ export const sync = action({
       summary: string;
       dueDate: string;
       color: string;
+      calendarGroupKey?: string;
+      icsSequence: number;
     }[] = [];
 
+    const todayYmd = formatYmdInTimeZone(userTimezone, new Date());
+
+    let fileOrder = 0;
     for (const event of events) {
       const dueDate = event.due ?? event.dtstart ?? event.dtend;
       if (!dueDate) continue;
+      // Skip past calendar days — only sync today and future due/start/end dates.
+      if (dueDate < todayYmd) continue;
+      const icsSequence = event.icsSequence !== undefined ? event.icsSequence : fileOrder;
+      fileOrder += 1;
       payload.push({
         uid: event.uid,
         summary: event.summary,
         dueDate,
         color: colorForUid(event.uid),
+        calendarGroupKey: event.calendarGroupKey,
+        icsSequence,
       });
     }
 
@@ -271,6 +288,19 @@ export const sync = action({
       taskSource,
       events: payload,
     });
+
+    /**
+     * ICS sync writes tasks directly (not via `tasks.create`), so `mergeNewTaskPlan` never ran.
+     * Run the same full replan as "Generate plan" so mini-tasks exist for the schedule UI.
+     */
+    if (payload.length > 0) {
+      try {
+        await ctx.runAction(api.plans.generate, {});
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("[canvasIcs.sync] plans.generate after calendar sync failed:", msg);
+      }
+    }
 
     return {
       success: true as const,

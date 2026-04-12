@@ -18,13 +18,16 @@ export function miniTasksFromPlanForParent(plan: UserPlan, parentId: string): Mi
         minutes: b.minutes,
         tier: b.tier,
         completed: false,
+        planOrder: b.planOrder ?? 0,
       })
     }
   }
-  out.sort(
-    (a, b) =>
-      a.scheduledDate.localeCompare(b.scheduledDate) || a.title.localeCompare(b.title)
-  )
+  out.sort((a, b) => {
+    if (a.scheduledDate !== b.scheduledDate) return a.scheduledDate.localeCompare(b.scheduledDate);
+    const o = (a.planOrder ?? 0) - (b.planOrder ?? 0);
+    if (o !== 0) return o;
+    return a.title.localeCompare(b.title);
+  })
   return out
 }
 

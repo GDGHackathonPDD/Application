@@ -12,6 +12,8 @@ const REASON_COPY: Record<PlanUpdateReason, string> = {
   manual_regenerate: "Your schedule was updated when you clicked Regenerate.",
   auto_drift: "Your schedule was updated automatically because you’re behind.",
   tasks_changed: "Your schedule was updated after your tasks changed.",
+  availability_changed:
+    "Your schedule was updated after your daily availability changed.",
 }
 
 function formatRelative(iso: string) {

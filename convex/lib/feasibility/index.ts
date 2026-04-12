@@ -4,10 +4,12 @@ import type {
   ExpandSuggestion,
   Recommendation,
   FeasibilityPayload,
+  FeasibilityResult,
 } from "../types";
 import { FEASIBILITY_CONFIG } from "../config";
 import { computeOverload } from "./overload";
 import { computeFeasibility } from "./availability";
+import { eachYmdInRange, formatYmd, formatYmdInTimeZone, parseYmd } from "../calendar_dates";
 
 function buildExpandSuggestions(
   shortfallHours: number,
@@ -21,11 +23,8 @@ function buildExpandSuggestions(
   const maxDaily = FEASIBILITY_CONFIG.maxDailySuggestionHours;
 
   const dayEntries: { date: string; available: number }[] = [];
-  const start = new Date(periodStart);
-  const end = new Date(periodEnd);
-
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const dateStr = d.toISOString().slice(0, 10);
+  for (const dateStr of eachYmdInRange(periodStart, periodEnd)) {
+    const d = parseYmd(dateStr);
     const dow = d.getDay();
     const row = availability.find((a) => a.day_of_week === dow);
     dayEntries.push({
@@ -64,15 +63,36 @@ function buildExpandSuggestions(
   return suggestions;
 }
 
+function taskWindowRecommendationMessages(feasibility: FeasibilityResult): string[] {
+  const sf = feasibility.task_window_shortfalls;
+  if (!sf || sf.length === 0) return [];
+  return sf.map((t) => {
+    if (t.task_id.startsWith("__cumulative__:")) {
+      const w = t.overdue
+        ? `overdue — only ~${t.available_hours_in_window.toFixed(1)} h left in your plan horizon`
+        : `~${t.available_hours_in_window.toFixed(1)} h on your calendar from today through that deadline`;
+      return `Combined load: ~${t.remaining_hours.toFixed(1)} h of work must finish on or before ${t.due_date}, but there ${w} (short ≈ ${t.shortfall_hours.toFixed(1)} h). Mark items done, reduce estimates, or shift due dates.`;
+    }
+    const w = t.overdue
+      ? `overdue — only ~${t.available_hours_in_window.toFixed(1)} h left in your plan horizon`
+      : `~${t.available_hours_in_window.toFixed(1)} h on your calendar before the due date`;
+    return `"${t.title}" needs ~${t.remaining_hours.toFixed(1)} h but ${w} (short ≈ ${t.shortfall_hours.toFixed(1)} h). Mark it done if already finished, lower the estimate, or move the deadline.`;
+  });
+}
+
 export function buildRecommendations(
-  feasibility: { status: string; shortfall_claimed_hours: number; shortfall_capped_hours: number },
+  feasibility: FeasibilityResult,
   availability: AvailabilityRow[],
   periodStart: string,
   periodEnd: string
 ): Recommendation[] {
   const recommendations: Recommendation[] = [];
 
-  if (feasibility.status === 'INFEASIBLE') {
+  for (const msg of taskWindowRecommendationMessages(feasibility)) {
+    recommendations.push({ type: 'REDUCE_SCOPE', message: msg });
+  }
+
+  if (feasibility.status === 'INFEASIBLE' && feasibility.shortfall_claimed_hours > 0.05) {
     const shortfall = feasibility.shortfall_claimed_hours;
     const rounded = Math.ceil(shortfall * 2) / 2;
     const suggestions = buildExpandSuggestions(shortfall, availability, periodStart, periodEnd);
@@ -104,13 +124,24 @@ export function computeFeasibilityPayload(
   tasks: Task[],
   availability: AvailabilityRow[],
   periodStart: string,
-  periodEnd: string
+  periodEnd: string,
+  userTimeZone?: string
 ): FeasibilityPayload {
   const totalAvail = availability.reduce((s, a) => s + a.available_hours, 0);
   const today = new Date();
+  const todayStr = userTimeZone
+    ? formatYmdInTimeZone(userTimeZone, today)
+    : formatYmd(today);
 
-  const overload = computeOverload(tasks, totalAvail, today);
-  const feasibility = computeFeasibility(tasks, availability, periodStart, periodEnd);
+  const feasibility = computeFeasibility(
+    tasks,
+    availability,
+    periodStart,
+    periodEnd,
+    todayStr
+  );
+  const taskWindowShortfallCount = feasibility.task_window_shortfalls?.length ?? 0;
+  const overload = computeOverload(tasks, totalAvail, today, taskWindowShortfallCount);
   const recommendations = buildRecommendations(feasibility, availability, periodStart, periodEnd);
 
   return { overload, feasibility, recommendations };

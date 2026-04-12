@@ -1,6 +1,9 @@
 import type { DriftResult, DriftChannel, FeasibilityResult, OverloadResult } from "../types";
 import { DRIFT_CONFIG } from "../config";
 
+/** Channels omitted from work-behind / recovery — not indicative of lag on assigned work. */
+const WORK_BEHIND_EXCLUDED: ReadonlySet<DriftChannel> = new Set(["SCHEDULE_STALE"]);
+
 type ChannelInputs = {
   overload: OverloadResult;
   feasibility: FeasibilityResult;
@@ -25,6 +28,7 @@ function overloadOrFeasibility(overload: OverloadResult, feasibility: Feasibilit
   return Math.min(1, base);
 }
 
+/** `incompleteCount` = incomplete minis in the near-term window (see dashboard + `slippageWindowDays`). */
 function slippageBlocks(incompleteCount: number): number {
   return Math.min(1, incompleteCount / DRIFT_CONFIG.maxIncompleteBlocks);
 }
@@ -82,7 +86,22 @@ export function computeDrift(inputs: ChannelInputs): DriftResult {
   }
   const driftScoreNorm = wNormSq > 0 ? driftScore / Math.sqrt(wNormSq) : 0;
 
+  let sumSqWork = 0;
+  let wNormSqWork = 0;
+  for (const [ch, s] of Object.entries(channels)) {
+    if (WORK_BEHIND_EXCLUDED.has(ch as DriftChannel)) continue;
+    const weight = w[ch] ?? 0;
+    const ws = weight * s;
+    sumSqWork += ws * ws;
+    wNormSqWork += weight * weight;
+  }
+  const driftScoreWork = Math.sqrt(sumSqWork);
+  const driftScoreNormWork =
+    wNormSqWork > 0 ? driftScoreWork / Math.sqrt(wNormSqWork) : 0;
+
   const fallingBehind = driftScoreNorm >= DRIFT_CONFIG.thresholdFallingBehind;
+  const fallingBehindWork =
+    driftScoreNormWork >= DRIFT_CONFIG.thresholdFallingBehind;
   const atRisk = !fallingBehind && driftScoreNorm >= DRIFT_CONFIG.thresholdAtRisk;
 
   const sorted = weighted.sort((a, b) => b.value - a.value);
@@ -98,6 +117,7 @@ export function computeDrift(inputs: ChannelInputs): DriftResult {
 
   return {
     falling_behind: fallingBehind,
+    falling_behind_work: fallingBehindWork,
     at_risk: atRisk,
     drift_score: Math.round(driftScore * 1000) / 1000,
     drift_score_norm: Math.round(driftScoreNorm * 1000) / 1000,
